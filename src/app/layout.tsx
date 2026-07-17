@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { MissionEngineProvider } from "@/components/providers/MissionEngineProvider";
+import { AuthProvider } from "@/components/providers/AuthProvider";
+import { VoiceProvider } from "@/components/providers/VoiceProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,9 +31,13 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col text-gray-900 bg-[#FAFAFA] selection:bg-indigo-100 selection:text-indigo-900 overflow-hidden font-sans">
-        <MissionEngineProvider>
-          {children}
-        </MissionEngineProvider>
+        <AuthProvider>
+          <VoiceProvider>
+            <MissionEngineProvider>
+              {children}
+            </MissionEngineProvider>
+          </VoiceProvider>
+        </AuthProvider>
       </body>
     </html>
   );

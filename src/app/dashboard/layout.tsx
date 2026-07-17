@@ -4,7 +4,6 @@ import { CEOInbox } from '@/components/ui/os/CEOInbox';
 import { Sidebar } from '@/components/ui/os/Sidebar';
 import { LivePulseWidget } from '@/components/ui/os/LivePulseWidget';
 
-import { VoiceProvider } from '@/components/providers/VoiceProvider';
 
 export default function DashboardLayout({
   children,
@@ -12,7 +11,6 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <VoiceProvider>
     <div className="flex h-screen bg-[#FAFAFA] text-gray-900 overflow-hidden relative">
       <CommandPalette />
       
@@ -45,6 +43,5 @@ export default function DashboardLayout({
       {/* 24/7 Autonomous Activity Pulse */}
       <LivePulseWidget />
     </div>
-    </VoiceProvider>
   );
 }

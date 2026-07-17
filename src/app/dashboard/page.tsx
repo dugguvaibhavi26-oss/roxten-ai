@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useMissionEngine } from '@/components/providers/MissionEngineProvider';
+import { useVoice } from '@/components/providers/VoiceProvider';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, Send } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -15,9 +16,43 @@ const DynamicOrgChart = dynamic(() => import('@/components/ui/os/DynamicOrgChart
 
 export default function CEODesk() {
   const { dispatchCommand, events, companyState } = useMissionEngine();
+  const { startCall, simulateAIResponse } = useVoice();
   const [input, setInput] = useState('');
   const [isDispatching, setIsDispatching] = useState(false);
   const [processingSteps, setProcessingSteps] = useState<{msg: string, status: 'pending'|'active'|'done'}[]>([]);
+
+  // Hook to check for unplayed executive briefing on load
+  useEffect(() => {
+    const playBriefing = async () => {
+      try {
+        const { db } = await import('@/lib/firebase');
+        const { doc, getDoc, updateDoc } = await import('firebase/firestore');
+        
+        const businessId = document.cookie.split('; ').find(row => row.startsWith('businessId='))?.split('=')[1];
+        if (!businessId) return;
+
+        const docRef = doc(db, 'companies', businessId);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.executiveBriefing && data.briefingPlayed === false) {
+            console.log('JARVIS BRIEFING:', data.executiveBriefing);
+            
+            // Mark as played
+            await updateDoc(docRef, { briefingPlayed: true });
+            
+            // Start a voice call with Jarvis and have him speak the briefing
+            startCall('jarvis', 'JARVIS', 'Executive AI');
+            setTimeout(() => simulateAIResponse(data.executiveBriefing), 1500);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to play briefing', e);
+      }
+    };
+    playBriefing();
+  }, []);
 
   const handleDispatch = async (e: React.FormEvent) => {
     e.preventDefault();

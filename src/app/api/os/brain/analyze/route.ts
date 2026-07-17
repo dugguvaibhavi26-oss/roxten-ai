@@ -60,7 +60,7 @@ Analyze this data and return ONLY a valid JSON array of objects with this exact 
 If operations are flawless and no insights are needed, return an empty array []. Do NOT include markdown.`;
 
     const rawResponse = await llm.generateText(prompt, { temperature: 0.3 });
-    let insights = [];
+    let insights: any[] = [];
     try {
       const match = rawResponse.match(/\[[\s\S]*\]/);
       if (match) {
@@ -72,7 +72,7 @@ If operations are flawless and no insights are needed, return an empty array [].
       console.error('Failed to parse brain insights', rawResponse);
     }
 
-    const createdInsights = [];
+    const createdInsights: any[] = [];
     for (const insight of insights) {
       if (!insight.title || !insight.description) continue;
       

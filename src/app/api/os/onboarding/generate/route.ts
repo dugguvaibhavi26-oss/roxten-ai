@@ -59,6 +59,21 @@ Make sure the orgChart makes sense for the specific business being created (e.g.
       });
     }
 
+    // Link businessId to user
+    try {
+      const { cookies } = await import('next/headers');
+      const cookieStore = await cookies();
+      const userId = cookieStore.get('userId')?.value;
+      if (userId && business?.id) {
+        const { adminDb } = await import('@/lib/firebase-admin');
+        await adminDb.collection('users').doc(userId).update({
+          businessId: business.id
+        });
+      }
+    } catch (e) {
+      console.error('Failed to update user doc with businessId', e);
+    }
+
     // Add unique IDs to orgChart for the UI
     const orgChartWithIds = data.orgChart.map((emp: any, index: number) => ({
       id: `emp_${Date.now()}_${index}`,

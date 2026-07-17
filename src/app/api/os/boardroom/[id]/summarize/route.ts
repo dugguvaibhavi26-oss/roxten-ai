@@ -17,7 +17,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
     }
 
-    const transcriptHistory = meeting.transcripts.map(t => `${t.speaker}: ${t.content}`).join('\n');
+    const transcriptHistory = (meeting.transcripts || []).map((t: any) => `${t.speaker}: ${t.content}`).join('\n');
     
     const llm = new GroqProvider();
     
@@ -86,7 +86,7 @@ Return ONLY valid JSON with the following structure:
 
       for (const item of summaryJSONStr.actionItems) {
         // Find best match for owner
-        const matched = activeEmployees.find(e => 
+        const matched = activeEmployees.find((e: any) => 
           e.name.toLowerCase().includes(item.owner.toLowerCase()) || 
           e.role.toLowerCase().includes(item.owner.toLowerCase())
         );

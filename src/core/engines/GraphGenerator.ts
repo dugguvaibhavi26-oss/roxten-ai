@@ -77,7 +77,7 @@ Schema:
         confidence: 0,
       }));
 
-      const edges = [];
+      const edges: any[] = [];
       for (const node of nodes) {
         if (node.dependencies) {
           for (const dep of node.dependencies) {

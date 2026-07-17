@@ -8,7 +8,7 @@ export type VoiceState = 'idle' | 'connecting' | 'listening' | 'thinking' | 'spe
 
 interface VoiceContextProps {
   voiceState: VoiceState;
-  startCall: (employeeId: string, employeeName: string, employeeRole: string, skipGreeting?: boolean) => void;
+  startCall: (employeeId: string, employeeName: string, employeeRole: string, skipGreeting?: boolean, customEndpoint?: string) => void;
   endCall: () => void;
   isMuted: boolean;
   toggleMute: () => void;
@@ -39,20 +39,25 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [lastResponse, setLastResponse] = useState<string>('');
   const [history, setHistory] = useState<{role: string, content: string}[]>([]);
 
+  const [chatEndpoint, setChatEndpoint] = useState<string | null>(null);
+
   // Refs for stale closures in Web Speech API event listeners
   const voiceStateRef = useRef<VoiceState>('idle');
   const isMutedRef = useRef(false);
   const activeEmployeeIdRef = useRef<string | null>(null);
   const historyRef = useRef<{role: string, content: string}[]>([]);
+  const chatEndpointRef = useRef<string | null>(null);
 
   useEffect(() => {
     voiceStateRef.current = voiceState;
     isMutedRef.current = isMuted;
     activeEmployeeIdRef.current = activeEmployeeId;
     historyRef.current = history;
-  }, [voiceState, isMuted, activeEmployeeId, history]);
+    chatEndpointRef.current = chatEndpoint;
+  }, [voiceState, isMuted, activeEmployeeId, history, chatEndpoint]);
 
   const synthRef = useRef<SpeechSynthesis | null>(null);
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
   const [timeElapsed, setTimeElapsed] = useState(0);
 
@@ -153,7 +158,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       
       if (currentText.trim()) {
         // FULL DUPLEX INTERRUPTION: Instantly cut off AI even on interim results!
-        if (synthRef.current && synthRef.current.speaking) {
+        if (activeAudioRef.current && !activeAudioRef.current.paused) {
+          activeAudioRef.current.pause();
+          activeAudioRef.current.src = "";
+          activeAudioRef.current = null;
+          setVoiceState('interrupted');
+        } else if (synthRef.current && synthRef.current.speaking) {
           synthRef.current.cancel();
           setVoiceState('interrupted');
         }
@@ -194,21 +204,38 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setHistory(prev => [...prev, { role: 'user', content: text }]);
 
     try {
-      const res = await fetch(`/api/os/workforce/employee/${currentActiveEmployeeId}/chat`, {
+      const endpoint = chatEndpointRef.current || `/api/os/workforce/employee/${currentActiveEmployeeId}/chat`;
+      // For the onboarding chat, the payload expects 'messages', whereas the workforce chat expects 'message' and 'history'.
+      // We will send both so the endpoint can pick what it needs.
+      const payload = {
+         message: text,
+         history: historyRef.current,
+         messages: [...historyRef.current, { role: 'user', content: text }]
+      };
+      
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history: historyRef.current })
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
         const data = await res.json();
-        setLastResponse(data.text);
-        setHistory(prev => [...prev, { role: 'assistant', content: data.text }]);
+        const responseText = data.text || data.reply || '';
+        
+        setLastResponse(responseText);
+        setHistory(prev => [...prev, { role: 'assistant', content: responseText }]);
         
         if (data.handoverEmployee) {
           setHandoverQueue(data.handoverEmployee);
         }
+
+        // Custom event trigger for onboarding flow completion
+        if (data.isReady) {
+           const event = new CustomEvent('roxten_onboarding_ready');
+           window.dispatchEvent(event);
+        }
         
-        speakText(data.text);
+        speakText(responseText);
       } else {
         setVoiceState('listening');
       }
@@ -224,18 +251,82 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       speakText(text);
   };
 
-  const speakText = (text: string) => {
-    if (!synthRef.current) return;
-    synthRef.current.cancel();
+  const speakText = async (text: string) => {
+    if (activeAudioRef.current) {
+       activeAudioRef.current.pause();
+       activeAudioRef.current.src = "";
+       activeAudioRef.current = null;
+    }
+    if (synthRef.current) synthRef.current.cancel();
+    
+    setVoiceState('speaking');
+
+    const dbProfile = (window as any)._activeVoiceProfile || {};
+    // Use stored voiceId or fallback to a neural voice
+    const voiceId = dbProfile.voiceId || "en-US-AriaNeural";
+
+    try {
+      const res = await fetch('/api/os/voice/synthesize', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({
+            text,
+            voice: voiceId,
+            pitch: dbProfile.voicePitch || '+0Hz',
+            rate: dbProfile.voiceSpeed || '+0%'
+         })
+      });
+
+      if (!res.ok) throw new Error("TTS Failed");
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.volume = volume;
+      activeAudioRef.current = audio;
+
+      audio.onended = () => {
+         URL.revokeObjectURL(url);
+         activeAudioRef.current = null;
+         handleSpeechEnd();
+      };
+
+      audio.onerror = () => {
+         URL.revokeObjectURL(url);
+         activeAudioRef.current = null;
+         fallbackSpeechSynthesis(text);
+      };
+
+      await audio.play();
+    } catch (error) {
+      console.error("Edge TTS failed, falling back to browser synthesis", error);
+      fallbackSpeechSynthesis(text);
+    }
+  };
+
+  const handleSpeechEnd = () => {
+    if (handoverQueue) {
+       startCall(handoverQueue.id, handoverQueue.name, handoverQueue.role);
+       setHandoverTrigger(true);
+       setHandoverQueue(null);
+    } else if (voiceStateRef.current !== 'idle' && voiceStateRef.current !== 'paused' && voiceStateRef.current !== 'interrupted') {
+      setVoiceState('listening');
+      startListening();
+    }
+  };
+
+  const fallbackSpeechSynthesis = (text: string) => {
+    if (!synthRef.current) {
+        handleSpeechEnd();
+        return;
+    }
     
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.volume = volume;
 
-    // Enhanced Provider Matching based on Web Speech API
     const voices = synthRef.current.getVoices();
     if (voices.length > 0) {
       const dbProfile = (window as any)._activeVoiceProfile || {};
-      
       const isFemale = dbProfile.gender === 'Female' || activeEmployeeRole?.toLowerCase().includes('marketing') || activeEmployeeRole?.toLowerCase().includes('hr');
       const isBritish = dbProfile.accent?.includes('British') || activeEmployeeName?.toLowerCase().includes('jarvis');
       const isIndian = dbProfile.accent?.includes('Indian');
@@ -251,61 +342,31 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         else if (isIndian) matchesAccent = v.lang.includes('IN');
         else if (isAustralian) matchesAccent = v.lang.includes('AU');
         else matchesAccent = v.lang.includes('US');
-        
         return matchesGender && matchesAccent;
       });
 
       if (!selectedVoice) {
-         // Fallback deterministic Hash if matching fails
-         const idString = activeEmployeeId || 'default';
-         let hash = 0;
-         for (let i = 0; i < idString.length; i++) hash = idString.charCodeAt(i) + ((hash << 5) - hash);
-         selectedVoice = voicePool[Math.abs(hash) % voicePool.length];
+         selectedVoice = voicePool[0];
       }
-      
       utterance.voice = selectedVoice;
-
-      if (dbProfile.voicePitch) {
-         utterance.pitch = parseFloat(dbProfile.voicePitch);
-      } else {
-         const pitchMod = (Math.abs(activeEmployeeId?.length || 0) % 40) / 100;
-         utterance.pitch = 0.8 + pitchMod;
-      }
-
-      if (dbProfile.voiceSpeed) {
-         utterance.rate = parseFloat(dbProfile.voiceSpeed);
-      } else {
-         const rateMod = ((Math.abs(activeEmployeeId?.length || 0) >> 1) % 20) / 100;
-         utterance.rate = 0.9 + rateMod;
-      }
+      if (dbProfile.voicePitch) utterance.pitch = parseFloat(dbProfile.voicePitch);
+      if (dbProfile.voiceSpeed) utterance.rate = parseFloat(dbProfile.voiceSpeed);
     }
     
-    utterance.onstart = () => {
-      setVoiceState('speaking');
-      // DO NOT ABORT RECOGNITION HERE. Keep the microphone hot for full-duplex interruptions.
-    };
-    
+    utterance.onstart = () => setVoiceState('speaking');
     utterance.onend = () => {
-      if (handoverQueue) {
-         startCall(handoverQueue.id, handoverQueue.name, handoverQueue.role);
-         setHandoverTrigger(true);
-         setHandoverQueue(null);
-      } else if (voiceStateRef.current !== 'idle' && voiceStateRef.current !== 'paused' && voiceStateRef.current !== 'interrupted') {
-        setVoiceState('listening');
-        startListening();
-      }
-      (window as any)._currentUtterance = null;
+       (window as any)._currentUtterance = null;
+       handleSpeechEnd();
     };
-    
-    // Prevent garbage collection mid-speech bug in Web Speech API
     (window as any)._currentUtterance = utterance;
     synthRef.current.speak(utterance);
   };
 
-  const startCall = (employeeId: string, employeeName: string, employeeRole: string, skipGreeting: boolean = false) => {
+  const startCall = (employeeId: string, employeeName: string, employeeRole: string, skipGreeting: boolean = false, customEndpoint?: string) => {
     setActiveEmployeeId(employeeId);
     setActiveEmployeeName(employeeName);
     setActiveEmployeeRole(employeeRole);
+    setChatEndpoint(customEndpoint || null);
     setHistory([]);
     setVoiceState('connecting');
 
@@ -316,6 +377,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         if (data.employee) {
           // Store voice settings in state or a ref to use in speakText
           (window as any)._activeVoiceProfile = {
+            voiceId: data.employee.voiceId,
             gender: data.employee.gender,
             accent: data.employee.accent,
             voiceSpeed: data.employee.voiceSpeed,
@@ -333,16 +395,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setTimeout(async () => {
       setVoiceState('thinking');
       try {
-        const res = await fetch(`/api/os/workforce/employee/${employeeId}/chat`, {
+        const endpoint = customEndpoint || `/api/os/workforce/employee/${employeeId}/chat`;
+        const greetingMsg = '[CEO has joined the call. Greet them naturally in 1 short sentence.]';
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: '[CEO has joined the call. Greet them naturally in 1 short sentence.]', history: [] })
+          body: JSON.stringify({ message: greetingMsg, history: [], messages: [{ role: 'user', content: greetingMsg }] })
         });
         if (res.ok) {
           const data = await res.json();
-          setLastResponse(data.text);
-          setHistory([{ role: 'assistant', content: data.text }]);
-          speakText(data.text);
+          const responseText = data.text || data.reply || '';
+          setLastResponse(responseText);
+          setHistory([{ role: 'assistant', content: responseText }]);
+          speakText(responseText);
         } else {
           setVoiceState('listening');
           startListening();
@@ -360,6 +425,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setActiveEmployeeName(null);
     setActiveEmployeeRole(null);
     setHistory([]);
+    if (activeAudioRef.current) {
+        activeAudioRef.current.pause();
+        activeAudioRef.current.src = "";
+        activeAudioRef.current = null;
+    }
     if (synthRef.current) synthRef.current.cancel();
     if (recognitionRef.current) recognitionRef.current.stop();
   };
@@ -371,21 +441,33 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const pauseSpeaking = () => {
-    if (synthRef.current && synthRef.current.speaking) {
+    if (activeAudioRef.current && !activeAudioRef.current.paused) {
+      activeAudioRef.current.pause();
+      setVoiceState('paused');
+    } else if (synthRef.current && synthRef.current.speaking) {
       synthRef.current.pause();
       setVoiceState('paused');
     }
   };
 
   const resumeSpeaking = () => {
-    if (synthRef.current && synthRef.current.paused) {
+    if (activeAudioRef.current && activeAudioRef.current.paused) {
+      activeAudioRef.current.play();
+      setVoiceState('speaking');
+    } else if (synthRef.current && synthRef.current.paused) {
       synthRef.current.resume();
       setVoiceState('speaking');
     }
   };
 
   const stopSpeaking = () => {
-    if (synthRef.current) {
+    if (activeAudioRef.current) {
+      activeAudioRef.current.pause();
+      activeAudioRef.current.src = "";
+      activeAudioRef.current = null;
+      setVoiceState('interrupted');
+      setTimeout(() => setVoiceState('listening'), 500);
+    } else if (synthRef.current) {
       synthRef.current.cancel();
       setVoiceState('interrupted');
       setTimeout(() => setVoiceState('listening'), 500);

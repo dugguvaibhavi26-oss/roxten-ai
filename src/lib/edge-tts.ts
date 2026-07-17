@@ -1,0 +1,165 @@
+import { randomBytes } from 'crypto';
+
+const TRUSTED_CLIENT_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
+const VOICE_LIST_URL = `https://speech.platform.bing.com/consumer/speech/synthesize/readaloud/voices/list?trustedclienttoken=${TRUSTED_CLIENT_TOKEN}`;
+const SYNTH_URL = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${TRUSTED_CLIENT_TOKEN}`;
+
+export interface EdgeVoice {
+  Name: string;
+  ShortName: string;
+  Gender: string;
+  Locale: string;
+  SuggestedCodec: string;
+  FriendlyName: string;
+  Status: string;
+  VoiceTag: {
+    ContentCategories: string[];
+    VoicePersonalities: string[];
+  };
+}
+
+export interface TTSOptions {
+  voice?: string;
+  pitch?: string; // e.g. '+0Hz'
+  rate?: string;  // e.g. '+0%'
+  volume?: string; // e.g. '+0%'
+}
+
+function generateRequestId() {
+  return randomBytes(16).toString('hex');
+}
+
+function escapeXml(unsafe: string) {
+  return unsafe.replace(/[<>&'"]/g, function (c) {
+      switch (c) {
+          case '<': return '&lt;';
+          case '>': return '&gt;';
+          case '&': return '&amp;';
+          case '\'': return '&apos;';
+          case '"': return '&quot;';
+          default: return c;
+      }
+  });
+}
+
+function getSSML(text: string, options: TTSOptions) {
+  const voice = options.voice || 'en-US-AriaNeural';
+  const pitch = options.pitch || '+0Hz';
+  const rate = options.rate || '+0%';
+  const volume = options.volume || '+0%';
+
+  const safeText = escapeXml(text);
+
+  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
+    <voice name="${voice}">
+        <prosody pitch="${pitch}" rate="${rate}" volume="${volume}">
+            ${safeText}
+        </prosody>
+    </voice>
+</speak>`;
+}
+
+export class EdgeTTS {
+  /**
+   * Fetches the list of available Microsoft Edge neural voices.
+   */
+  static async getVoices(): Promise<EdgeVoice[]> {
+    const response = await fetch(VOICE_LIST_URL, {
+      headers: {
+        'Authority': 'speech.platform.bing.com',
+        'Sec-CH-UA': '" Not;A Brand";v="99", "Microsoft Edge";v="113", "Chromium";v="113"',
+        'Sec-CH-UA-Mobile': '?0',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.50',
+        'Accept': '*/*',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Dest': 'empty',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'en-US,en;q=0.9'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch voices: ${response.statusText}`);
+    }
+    return await response.json();
+  }
+
+  /**
+   * Synthesizes text to an MP3 AudioBuffer stream using Edge TTS.
+   * Note: This uses native standard WebSocket available in Node 22+.
+   */
+  static synthesize(text: string, options: TTSOptions = {}): ReadableStream {
+    const ssml = getSSML(text, options);
+    const requestId = generateRequestId();
+    
+    // Config packet
+    const configData = JSON.stringify({
+      context: {
+        synthesis: {
+          audio: {
+            metadataoptions: {
+              sentenceBoundaryEnabled: "false",
+              wordBoundaryEnabled: "true"
+            },
+            outputFormat: "audio-24khz-48kbitrate-mono-mp3"
+          }
+        }
+      }
+    });
+    
+    const configMessage = `X-Timestamp:${new Date().toISOString()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n${configData}`;
+    
+    // SSML packet
+    const ssmlMessage = `X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${new Date().toISOString()}Z\r\nPath:ssml\r\n\r\n${ssml}`;
+
+    return new ReadableStream({
+      start(controller) {
+        // Use native WebSocket or fallback to ws package (for Node < 21)
+        let WSClass: any;
+        if (typeof WebSocket !== 'undefined') {
+          WSClass = WebSocket;
+        } else {
+          WSClass = require('ws');
+        }
+        
+        const ws = new WSClass(SYNTH_URL);
+
+        ws.onopen = () => {
+          ws.send(configMessage);
+          ws.send(ssmlMessage);
+        };
+
+        ws.onmessage = async (event) => {
+          if (typeof event.data === 'string') {
+            const data = event.data;
+            if (data.includes('Path:turn.end')) {
+              ws.close();
+              controller.close();
+            }
+          } else if (event.data instanceof Blob) {
+            // Browser/Edge environment sends Blob
+            const arrayBuffer = await event.data.arrayBuffer();
+            const view = new DataView(arrayBuffer);
+            const headerLength = view.getUint16(0);
+            
+            // The audio data starts after the header + 2 bytes for the header length itself
+            const audioData = new Uint8Array(arrayBuffer, headerLength + 2);
+            controller.enqueue(audioData);
+          } else {
+             // Node environment sends Buffer or ArrayBuffer
+             const buffer = Buffer.from(event.data as any);
+             const headerLength = buffer.readUInt16BE(0);
+             const audioData = buffer.subarray(headerLength + 2);
+             controller.enqueue(new Uint8Array(audioData));
+          }
+        };
+
+        ws.onerror = (error) => {
+          controller.error(error);
+          ws.close();
+        };
+      }
+    });
+  }
+}

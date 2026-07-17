@@ -6,17 +6,23 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "postinstall": "prisma generate"
+    "lint": "eslint"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
+    "@bestcodes/edge-tts": "^3.0.1",
+    "cheerio": "^1.2.0",
+    "edge-tts": "^1.0.1",
+    "firebase": "^12.16.0",
+    "firebase-admin": "^14.2.0",
     "framer-motion": "^12.42.2",
     "lucide-react": "^1.24.0",
     "next": "16.2.10",
+    "node-edge-tts": "^1.2.10",
+    "pdf-parse": "^2.4.5",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "uuid": "^14.0.1"
+    "uuid": "^14.0.1",
+    "xhr2": "^0.2.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -26,7 +32,6 @@
     "@types/uuid": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
-    "prisma": "^5.22.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

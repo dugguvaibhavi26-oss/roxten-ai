@@ -31,7 +31,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }, llm, null as any);
       const { text: responseText, handoverTo } = await runtime.processMessage(message, history || []);
       
-      let handoverEmployee = null;
+      let handoverEmployee: any = null;
       if (handoverTo) {
         const targetDept = await prisma.department.findFirst({
           where: { name: { contains: handoverTo, mode: 'insensitive' }, businessId: 'system' }, // fallback
@@ -88,7 +88,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // Process Message
     const { text: responseText, handoverTo } = await runtime.processMessage(message, history || []);
     
-    let handoverEmployee = null;
+    let handoverEmployee: any = null;
     if (handoverTo) {
       const targetDept = await prisma.department.findFirst({
         where: { name: { contains: handoverTo, mode: 'insensitive' }, businessId: employee.businessId },
@@ -101,6 +101,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           role: targetDept.employees[0].role
         };
       }
+    }
+
+    // Persist conversation history to Firebase
+    try {
+      const { adminDb } = await import('@/lib/firebase-admin');
+      await adminDb.collection('conversationHistory').add({
+        employeeId: id,
+        businessId: employee.businessId,
+        message,
+        response: responseText,
+        timestamp: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error('Failed to persist conversation history', e);
     }
 
     return NextResponse.json({ 

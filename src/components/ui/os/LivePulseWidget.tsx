@@ -13,36 +13,46 @@ export function LivePulseWidget() {
   const { voiceState, startCall, simulateAIResponse } = useVoice();
 
   useEffect(() => {
-    const fetchPulse = async () => {
+    let unsubscribe: () => void;
+    
+    const initListener = async () => {
       try {
-        const res = await fetch('/api/os/pulse');
-        const data = await res.json();
-        if (data.success && data.pulse) {
-          setPulse(data.pulse);
-          if (data.pulse.id !== lastPulseId) {
+        const { db } = await import('@/lib/firebase');
+        const { collection, query, orderBy, limit, onSnapshot } = await import('firebase/firestore');
+        
+        const q = query(
+          collection(db, 'timeline'),
+          orderBy('createdAt', 'desc'),
+          limit(10)
+        );
+
+        unsubscribe = onSnapshot(q, (snapshot) => {
+          const activities = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          
+          setPulse((prev: any) => ({
+             ...prev,
+             recentActivities: activities,
+             activeEmployees: 4, // Simulated stats for now, could be derived from 'employees' collection
+             tasksCount: activities.length * 3
+          }));
+
+          const latestActivity = activities[0];
+          if (latestActivity && latestActivity.id !== lastPulseId) {
             if (lastPulseId !== null && !isOpen) {
               setHasNewPulse(true);
             }
-            setLastPulseId(data.pulse.id);
+            setLastPulseId(latestActivity.id);
           }
-          
-          // Proactive Call Initiation
-          if (data.pulse.urgentCallInitiation && voiceState === 'idle') {
-             const { employeeId, employeeName, employeeRole, message } = data.pulse.urgentCallInitiation;
-             startCall(employeeId, employeeName, employeeRole);
-             setTimeout(() => {
-               simulateAIResponse(message);
-             }, 1500); // Small delay to simulate connecting
-          }
-        }
+        });
       } catch (e) {
         console.error('Pulse fetch error', e);
       }
     };
 
-    fetchPulse();
-    const interval = setInterval(fetchPulse, 10000); // Polling every 10s for the live feel
-    return () => clearInterval(interval);
+    initListener();
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [lastPulseId, isOpen]);
 
   useEffect(() => {

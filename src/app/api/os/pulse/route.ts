@@ -6,7 +6,7 @@ export async function GET() {
     const business = await prisma.business.findFirst();
     if (!business) return NextResponse.json({ success: false });
 
-    let urgentCallInitiation = null;
+    let urgentCallInitiation: any = null;
 
     // Find a pending or active task to make progress on
     const activeTask = await prisma.task.findFirst({
