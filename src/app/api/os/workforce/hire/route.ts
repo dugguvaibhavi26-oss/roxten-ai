@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { EventPipeline } from '@/core/messaging/EventPipeline';
+import { IntelligenceService } from '@/lib/services/IntelligenceService';
 
 export async function POST(req: Request) {
   try {
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
     const voiceId = voiceRec?.voiceId || 'kokoro-af_bella';
     const isMale = voiceId.includes('am_');
 
-    // 2. Employee Record Creation
+    // 2. Initial Employee Record Creation (Pending Deployment)
     const employee = await prisma.employee.create({
       data: {
         name: template.name,
@@ -45,10 +46,15 @@ export async function POST(req: Request) {
         personality: template.personality,
         responsibilities: template.responsibilities,
         goals: template.goals,
+        communicationStyle: template.communicationStyle,
+        decisionBoundaries: template.decisionBoundaries,
+        kpis: template.kpis,
+        departmentKnowledge: template.departmentKnowledge,
+        runtimeConfig: template.runtimeConfig,
         businessId: businessId,
         departmentId: department.id,
-        isActive: true,
-        isDeployed: true,
+        isActive: false, // Explicitly false until verified
+        isDeployed: false, // Explicitly false until verified
         selectedVoiceId: voiceId,
         voiceId: voiceId,
         voiceProvider: voiceRec?.provider || 'Kokoro',
@@ -60,31 +66,54 @@ export async function POST(req: Request) {
       }
     });
 
-    // 3. Memory Initialization
+    // 3. Inject Memory, DNA, Knowledge, Responsibilities, Goals, Boundaries
+    const memoriesToInject = [
+      { key: 'Role Definition', value: template.role },
+      { key: 'Responsibilities', value: Array.isArray(template.responsibilities) ? template.responsibilities.join(', ') : template.responsibilities || 'General duties' },
+      { key: 'Goals', value: Array.isArray(template.goals) ? template.goals.join(', ') : template.goals || 'Serve the company' },
+      { key: 'Decision Boundaries', value: template.decisionBoundaries || 'Follow standard protocol' },
+      { key: 'Department Knowledge', value: template.departmentKnowledge || 'No specific knowledge provided' },
+      { key: 'Personality', value: template.personality || 'Professional' },
+      { key: 'Communication Style', value: template.communicationStyle || 'Direct' }
+    ];
+
+    // Bulk inject into Prisma (SQL/Relational mock)
     await prisma.memory.createMany({
-      data: [
-        {
-          businessId,
-          employeeId: employee.id,
-          type: 'core_directive',
-          key: 'primary_goal',
-          value: template.goals || 'Serve the company',
-          status: 'ACTIVE',
-          updatedAt: new Date()
-        },
-        {
-          businessId,
-          employeeId: employee.id,
-          type: 'core_directive',
-          key: 'personality',
-          value: template.personality || 'Professional',
-          status: 'ACTIVE',
-          updatedAt: new Date()
-        }
-      ]
+      data: memoriesToInject.map(m => ({
+        businessId,
+        employeeId: employee.id,
+        type: 'core_directive',
+        key: m.key,
+        value: m.value,
+        status: 'ACTIVE',
+        updatedAt: new Date()
+      }))
     });
 
-    // 4. Company Brain Registration & Activity Feed Update
+    // Bulk inject into IntelligenceService (Firebase/Vector mock)
+    try {
+      for (const m of memoriesToInject) {
+        await IntelligenceService.addEmployeeMemory(businessId, employee.id, `Core Directive: ${m.key}`, m.value);
+      }
+    } catch (e) {
+      console.error('Failed to add initial memories to Firebase', e);
+      throw new Error("Intelligence Service Failure - Deployment Aborted");
+    }
+
+    // 4. Runtime Validation & Deployment Marking
+    // At this point: Employee Exists, Department Exists, Memory Loaded, Voice Ready.
+    await prisma.employee.update({
+      where: { id: employee.id },
+      data: {
+        isActive: true,
+        isDeployed: true
+      }
+    });
+
+    employee.isActive = true;
+    employee.isDeployed = true;
+
+    // 5. Company Brain Registration & Activity Feed Update
     const activity = await prisma.activity.create({
       data: {
         id: `act_${Date.now()}`,
@@ -101,17 +130,17 @@ export async function POST(req: Request) {
         activityId: activity.id,
         eventType: 'AGENT_HIRED',
         actor: 'CEO',
-        content: `Hired ${employee.name} (${employee.role}) into the ${department.name} department.`
+        content: `Successfully deployed ${employee.name} (${employee.role}) into the ${department.name} department.`
       }
     });
 
-    // 5. Timeline Generation (Ripple Effect)
+    // 6. Timeline Generation (Ripple Effect)
     await prisma.businessTimelineEvent.create({
       data: {
         businessId: businessId,
         type: 'EMPLOYEE_EVENT',
-        title: 'New AI Employee Hired',
-        description: `${employee.name} joined as ${employee.role} in ${department.name}.`,
+        title: 'New AI Employee Deployed',
+        description: `${employee.name} initialized and deployed as ${employee.role} in ${department.name}.`,
         metadata: { employeeId: employee.id, role: employee.role }
       }
     });
@@ -125,25 +154,14 @@ export async function POST(req: Request) {
       sender: 'system',
       receiver: '*',
       intent: 'STATE_UPDATE',
-      payload: { employeeId: employee.id, action: 'HIRED' },
-      priority: 'high',
-      status: 'completed'
-    });
-
-    // Broadcast for persistence engines (Ripple Effect)
-    pipeline.dispatch({
-      type: 'AGENT_HIRED',
-      sender: 'system',
-      receiver: 'system',
-      intent: 'LOG',
-      payload: { employeeId: employee.id, action: 'HIRED' },
+      payload: { employeeId: employee.id, action: 'DEPLOYED' },
       priority: 'high',
       status: 'completed'
     });
 
     return NextResponse.json(employee);
   } catch (error: any) {
-    console.error('Error hiring agent:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error('Error deploying agent:', error);
+    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
   }
 }

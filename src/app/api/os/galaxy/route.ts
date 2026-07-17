@@ -1,38 +1,25 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { cookies } from 'next/headers';
+import { WorkforceService } from '@/lib/services/WorkforceService';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    // Get the first business (since this is a single-tenant OS demo currently)
-    const business = await prisma.business.findFirst({
-      include: {
-        departments: {
-          include: {
-            employees: {
-              include: {
-                tasks: {
-                  where: { status: 'IN_PROGRESS' }
-                }
-              }
-            }
-          }
-        },
-        employees: {
-          where: { departmentId: null },
-          include: {
-            tasks: {
-              where: { status: 'IN_PROGRESS' }
-            }
-          }
-        }
-      }
-    });
+    const cookieStore = await cookies();
+    const businessId = cookieStore.get('businessId')?.value;
+    
+    if (!businessId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    if (!business) {
+    const businessGalaxy = await WorkforceService.getGalaxy(businessId);
+
+    if (!businessGalaxy) {
       return NextResponse.json({ error: 'No business found' }, { status: 404 });
     }
 
-    return NextResponse.json(business);
+    return NextResponse.json(businessGalaxy);
   } catch (error: any) {
     console.error('Error fetching galaxy data:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

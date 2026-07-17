@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
@@ -8,7 +9,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing channels' }, { status: 400 });
     }
 
-    const business = await prisma.business.findFirst();
+    const cookieStore = await cookies();
+    const businessId = cookieStore.get('businessId')?.value;
+    if (!businessId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const business = await prisma.business.findUnique({ where: { id: businessId } });
     if (!business) return NextResponse.json({ error: 'Business not found' }, { status: 404 });
 
     const responseData: any = {};

@@ -37,7 +37,7 @@ export default function AIBoardroom() {
 
   // Fetch employees
   useEffect(() => {
-    fetch('/api/os/galaxy')
+    fetch('/api/os/galaxy?t=' + Date.now())
       .then(res => res.json())
       .then(data => {
         const allEmployees = data?.departments?.flatMap((d: any) => d.employees) || [];

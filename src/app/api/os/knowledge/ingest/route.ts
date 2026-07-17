@@ -17,36 +17,44 @@ Document Source: ${sourceTitle || sourceUrl}
 Document Content:
 ${text.substring(0, 15000)}
 
-Analyze this new information and generate structured knowledge updates.
-Return ONLY valid JSON matching this schema:
-{
-  "knowledgeUpdates": [
-    {
-      "category": "Policy",
-      "title": "Title",
-      "content": "Detailed content",
-      "tags": ["tag1"],
-      "confidenceScore": 95,
-      "relatedDepartments": ["Operations"]
-    }
-  ],
-  "brainUpdates": [
-    {
-      "category": "Growth Opportunity",
-      "title": "New opportunity discovered",
-      "content": "Details"
-    }
-  ]
-}`;
+Analyze this new information and generate structured knowledge updates.`;
 
-    const synthesisText = await llm.generateText(systemPrompt, { temperature: 0.7 });
-    
-    let parsedData;
+    const jsonSchema = {
+      type: "object",
+      properties: {
+        knowledgeUpdates: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              category: { type: "string" },
+              title: { type: "string" },
+              content: { type: "string" },
+              tags: { type: "array", items: { type: "string" } },
+              confidenceScore: { type: "number" },
+              relatedDepartments: { type: "array", items: { type: "string" } }
+            }
+          }
+        },
+        brainUpdates: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              category: { type: "string" },
+              title: { type: "string" },
+              content: { type: "string" }
+            }
+          }
+        }
+      }
+    };
+
+    let parsedData: any;
     try {
-      const jsonMatch = synthesisText.match(/\{[\s\S]*\}/);
-      parsedData = JSON.parse(jsonMatch ? jsonMatch[0] : synthesisText);
-    } catch (e) {
-      throw new Error("Failed to parse LLM JSON for knowledge ingest.");
+      parsedData = await llm.generateJSON(systemPrompt, jsonSchema);
+    } catch (e: any) {
+      throw new Error(`LLM Error: ${e.message}`);
     }
 
     // 1. Insert Knowledge Graph updates

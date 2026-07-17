@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Bot, Briefcase, Activity, Search, Filter } from 'lucide-react';
+import { Users, Bot, Briefcase, Search, Filter, Activity, Brain, Volume2, Database, Clock } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -13,7 +13,7 @@ export default function WorkforceDirectory() {
   const router = useRouter();
 
   useEffect(() => {
-    fetch('/api/os/galaxy')
+    fetch('/api/os/galaxy?t=' + Date.now())
       .then(res => res.json())
       .then(d => {
         setData(d);
@@ -80,61 +80,96 @@ export default function WorkforceDirectory() {
         </div>
       </div>
 
-      <div className="p-10 max-w-[1400px] mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-          {filteredEmployees.map((emp: any) => (
-            <div 
-              key={emp.id} 
-              onClick={() => router.push(`/dashboard/workforce/employees/${emp.id}`)}
-              className="bg-white border border-gray-200 rounded-3xl p-8 hover:shadow-md hover:border-gray-300 transition-all cursor-pointer group flex flex-col"
-            >
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center border border-indigo-100 group-hover:bg-indigo-100 transition-colors">
-                  <Bot className="w-7 h-7 text-indigo-600" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900 text-xl">{emp.name}</h3>
-                  <p className="text-sm font-semibold text-gray-500 flex items-center gap-2 mt-1">
-                    <Briefcase className="w-4 h-4 text-gray-400" /> {emp.role}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex-1 space-y-4 mb-8">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500 font-semibold">Department</span>
-                  <span className="text-gray-900 font-bold">
-                    {data.departments?.find((d: any) => d.id === emp.departmentId)?.name || 'General'}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500 font-semibold">Workload</span>
-                  <span className="text-gray-900 font-bold">
-                    {emp.tasks?.filter((t: any) => t.status === 'PENDING' || t.status === 'IN_PROGRESS').length || 0} Active Tasks
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500 font-semibold">Permissions</span>
-                  <span className="text-gray-900 font-bold">{emp.permissions?.length || 2} Granted</span>
-                </div>
-              </div>
+      <div className="p-10 max-w-[1600px] mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
+          {filteredEmployees.map((emp: any) => {
+            const activeTasks = emp.tasks?.filter((t: any) => t.status === 'IN_PROGRESS' || t.status === 'PENDING') || [];
+            const currentTask = activeTasks.length > 0 ? activeTasks[0].title : 'Idle';
+            const deptName = data.departments?.find((d: any) => d.id === emp.departmentId)?.name || 'General';
 
-              <div className="mt-auto pt-6 border-t border-gray-100 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                  </span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Runtime Active</span>
+            return (
+              <div 
+                key={emp.id} 
+                onClick={() => router.push(`/dashboard/workforce/employees/${emp.id}`)}
+                className="bg-white border border-gray-200 rounded-3xl p-6 hover:shadow-lg hover:border-indigo-300 transition-all cursor-pointer group flex flex-col"
+              >
+                <div className="flex items-start justify-between mb-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center border border-indigo-100 group-hover:bg-indigo-600 transition-colors">
+                      <Bot className="w-7 h-7 text-indigo-600 group-hover:text-white transition-colors" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900 text-xl">{emp.name}</h3>
+                      <p className="text-sm font-semibold text-gray-500 flex items-center gap-1.5 mt-1">
+                        <Briefcase className="w-4 h-4 text-gray-400" /> {emp.role}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-bold uppercase tracking-wider">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+                      Deployed
+                    </div>
+                    <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-lg">{deptName}</span>
+                  </div>
                 </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">v{emp.version}.0</span>
+                
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <div className="flex items-center gap-2 text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">
+                      <Activity className="w-3.5 h-3.5" /> Runtime
+                    </div>
+                    <div className="text-gray-900 font-bold text-sm">100% Healthy</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <div className="flex items-center gap-2 text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">
+                      <Brain className="w-3.5 h-3.5" /> Memory
+                    </div>
+                    <div className="text-gray-900 font-bold text-sm text-emerald-600">Synchronized</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <div className="flex items-center gap-2 text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">
+                      <Database className="w-3.5 h-3.5" /> Knowledge
+                    </div>
+                    <div className="text-gray-900 font-bold text-sm text-emerald-600">Indexed</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <div className="flex items-center gap-2 text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">
+                      <Volume2 className="w-3.5 h-3.5" /> Voice
+                    </div>
+                    <div className="text-gray-900 font-bold text-sm truncate">{emp.voiceProvider || 'Ready'}</div>
+                  </div>
+                </div>
+
+                <div className="mt-auto border-t border-gray-100 pt-5 space-y-3">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-500 font-semibold flex items-center gap-2">
+                      <Activity className="w-4 h-4" /> Current Task
+                    </span>
+                    <span className="text-indigo-600 font-bold truncate max-w-[150px]">{currentTask}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-500 font-semibold flex items-center gap-2">
+                      <Clock className="w-4 h-4" /> Last Active
+                    </span>
+                    <span className="text-gray-900 font-bold">Just now</span>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {filteredEmployees.length === 0 && (
-            <div className="col-span-full text-center py-16 bg-gray-50 border border-gray-200 border-dashed rounded-3xl">
-              <p className="text-gray-500 font-medium text-lg">No agents found matching your search.</p>
+            <div className="col-span-full text-center py-20 bg-gray-50 border border-gray-200 border-dashed rounded-3xl flex flex-col items-center justify-center">
+              <Users className="w-16 h-16 text-gray-300 mb-4" />
+              <h3 className="text-xl font-bold text-gray-900 mb-2">No Deployed Agents</h3>
+              <p className="text-gray-500 font-medium max-w-sm">No fully initialized and deployed agents found matching your search. Hire a new agent to populate the directory.</p>
+              <Link href="/dashboard/workforce/marketplace" className="mt-6 bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">
+                Hire Agent
+              </Link>
             </div>
           )}
         </div>

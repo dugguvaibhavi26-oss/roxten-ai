@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Brain, FileText, Database, Activity, Zap, History, Search, Send, FileCode2 } from 'lucide-react';
+import { Brain, Database, Search, Send, Activity, FileText, FileCode2, Info } from 'lucide-react';
+import { KnowledgeUploader } from '@/components/ui/os/KnowledgeUploader';
 
 export default function BrainDashboard() {
   const [data, setData] = useState<any>(null);
@@ -14,7 +15,7 @@ export default function BrainDashboard() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch('/api/os/brain')
+    fetch('/api/os/brain?t=' + Date.now())
       .then(res => res.json())
       .then(d => {
         setData(d);
@@ -174,9 +175,13 @@ export default function BrainDashboard() {
         </div>
 
         {/* Right Column: Data Streams */}
-        <div className="flex-1 flex flex-col gap-6 overflow-hidden">
+        <div className="flex-1 flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-4 pb-8">
           
-          <div className="grid grid-cols-2 gap-6 flex-1 overflow-hidden">
+          <div className="shrink-0">
+            <KnowledgeUploader onComplete={() => window.location.reload()} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-6 shrink-0 h-[500px]">
             {/* Knowledge & Meetings */}
             <div className="bg-white border border-gray-200 rounded-3xl p-6 flex flex-col overflow-hidden shadow-sm">
               <h3 className="text-md font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -232,12 +237,12 @@ export default function BrainDashboard() {
             </summary>
             <div className="mt-4 pt-2 space-y-2 h-[200px] overflow-y-auto custom-scrollbar">
                {memories.length === 0 ? (
-                 <p className="text-gray-500 text-sm italic">No raw memory blocks stored.</p>
+                 <p className="text-gray-500 text-sm italic">No raw memory blocks stored. Upload a document to populate the brain.</p>
                ) : (
                  memories.map((mem: any) => (
                    <div key={mem.id} className="p-3 bg-gray-50 border border-gray-200 rounded-xl flex gap-4">
-                     <div className="font-bold text-xs text-gray-500 w-1/3 truncate">{mem.key}</div>
-                     <div className="text-xs text-gray-700 font-mono flex-1 truncate">{mem.value}</div>
+                     <div className="font-bold text-xs text-gray-500 w-1/3 truncate">{mem.title || mem.category || 'Memory Node'}</div>
+                     <div className="text-xs text-gray-700 font-mono flex-1 truncate">{mem.content || mem.actionable || ''}</div>
                    </div>
                  ))
                )}

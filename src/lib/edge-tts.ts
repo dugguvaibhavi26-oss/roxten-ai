@@ -1,5 +1,3 @@
-import { randomBytes } from 'crypto';
-
 const TRUSTED_CLIENT_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
 const VOICE_LIST_URL = `https://speech.platform.bing.com/consumer/speech/synthesize/readaloud/voices/list?trustedclienttoken=${TRUSTED_CLIENT_TOKEN}`;
 const SYNTH_URL = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${TRUSTED_CLIENT_TOKEN}`;
@@ -26,7 +24,7 @@ export interface TTSOptions {
 }
 
 function generateRequestId() {
-  return randomBytes(16).toString('hex');
+  return crypto.randomUUID().replace(/-/g, '');
 }
 
 function escapeXml(unsafe: string) {
@@ -89,9 +87,10 @@ export class EdgeTTS {
    * Synthesizes text to an MP3 AudioBuffer stream using Edge TTS.
    * Note: This uses native standard WebSocket available in Node 22+.
    */
-  static synthesize(text: string, options: TTSOptions = {}): ReadableStream {
-    const ssml = getSSML(text, options);
-    const requestId = generateRequestId();
+  static synthesize(text: string, options: TTSOptions = {}): Promise<ReadableStream> {
+    return new Promise((resolve, reject) => {
+      const ssml = getSSML(text, options);
+      const requestId = generateRequestId();
     
     // Config packet
     const configData = JSON.stringify({
@@ -111,55 +110,74 @@ export class EdgeTTS {
     const configMessage = `X-Timestamp:${new Date().toISOString()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n${configData}`;
     
     // SSML packet
-    const ssmlMessage = `X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${new Date().toISOString()}Z\r\nPath:ssml\r\n\r\n${ssml}`;
+      const ssmlMessage = `X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${new Date().toISOString()}Z\r\nPath:ssml\r\n\r\n${ssml}`;
 
-    return new ReadableStream({
-      start(controller) {
-        // Use native WebSocket or fallback to ws package (for Node < 21)
-        let WSClass: any;
-        if (typeof WebSocket !== 'undefined') {
-          WSClass = WebSocket;
-        } else {
-          WSClass = require('ws');
+      const WSClass = require('ws');
+      
+      const ws = new WSClass(SYNTH_URL, {
+        headers: {
+          'Origin': 'chrome-extension://jdiccldimpdaepmoblfhppfiifkgnkfc',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0'
         }
+      });
+
+      ws.onopen = () => {
+        ws.send(configMessage);
+        ws.send(ssmlMessage);
         
-        const ws = new WSClass(SYNTH_URL);
+        // Resolve the stream once connected
+        const stream = new ReadableStream({
+          start(controller) {
+            ws.onmessage = async (event: any) => {
+          try {
+            if (typeof event.data === 'string') {
+              const data = event.data;
+              if (data.includes('Path:turn.end')) {
+                ws.close();
+                controller.close();
+              }
+            } else {
+              // Can be Blob or ArrayBuffer depending on environment
+              let arrayBuffer: ArrayBuffer;
+              if (event.data instanceof Blob || (event.data && typeof (event.data as any).arrayBuffer === 'function')) {
+                arrayBuffer = await (event.data as Blob).arrayBuffer();
+              } else if (event.data instanceof ArrayBuffer) {
+                arrayBuffer = event.data;
+              } else {
+                arrayBuffer = new Uint8Array(event.data).buffer;
+              }
 
-        ws.onopen = () => {
-          ws.send(configMessage);
-          ws.send(ssmlMessage);
-        };
-
-        ws.onmessage = async (event) => {
-          if (typeof event.data === 'string') {
-            const data = event.data;
-            if (data.includes('Path:turn.end')) {
-              ws.close();
-              controller.close();
+              const view = new DataView(arrayBuffer);
+              const headerLength = view.getUint16(0);
+              
+              const audioData = new Uint8Array(arrayBuffer, headerLength + 2);
+              controller.enqueue(audioData);
             }
-          } else if (event.data instanceof Blob) {
-            // Browser/Edge environment sends Blob
-            const arrayBuffer = await event.data.arrayBuffer();
-            const view = new DataView(arrayBuffer);
-            const headerLength = view.getUint16(0);
-            
-            // The audio data starts after the header + 2 bytes for the header length itself
-            const audioData = new Uint8Array(arrayBuffer, headerLength + 2);
-            controller.enqueue(audioData);
-          } else {
-             // Node environment sends Buffer or ArrayBuffer
-             const buffer = Buffer.from(event.data as any);
-             const headerLength = buffer.readUInt16BE(0);
-             const audioData = buffer.subarray(headerLength + 2);
-             controller.enqueue(new Uint8Array(audioData));
-          }
-        };
+          } catch (err) {
+            console.error("Edge TTS Stream Error:", err);
+              controller.error(err);
+              ws.close();
+            }
+          };
 
-        ws.onerror = (error) => {
-          controller.error(error);
-          ws.close();
-        };
-      }
-    });
-  }
+          ws.onerror = (error) => {
+            console.error("WebSocket Error after open:", error);
+            controller.error(error);
+            ws.close();
+          };
+
+          ws.onclose = () => {
+            try { controller.close(); } catch (e) {}
+          };
+        }
+      });
+      resolve(stream);
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket Connection Error:", error);
+      reject(new Error("Failed to connect to TTS service"));
+    };
+  });
+}
 }

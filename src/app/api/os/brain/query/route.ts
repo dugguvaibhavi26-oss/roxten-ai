@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { GroqProvider } from '@/core/providers/GroqProvider';
@@ -7,14 +8,21 @@ export async function POST(req: Request) {
     const { query } = await req.json();
     if (!query) return NextResponse.json({ error: 'Query required' }, { status: 400 });
 
-    const business = await prisma.business.findFirst();
+    const cookieStore = await cookies();
+    const businessId = cookieStore.get('businessId')?.value;
+    if (!businessId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const business = await prisma.business.findUnique({ where: { id: businessId } });
     if (!business) return NextResponse.json({ error: 'Business not found' }, { status: 404 });
 
+    // Pre-fetch activity IDs for the business to bypass mock relational limitations
+    const businessActivities = await prisma.activity.findMany({ where: { businessId: business.id } });
+    const activityIds = businessActivities.map((a: any) => a.id).slice(0, 10);
+    
     // Fetch comprehensive context
     const [memories, knowledge, activities, meetings, tasks, insights, timelineEvents, employees] = await Promise.all([
       prisma.memory.findMany({ where: { businessId: business.id }, take: 100 }),
       prisma.businessKnowledge.findMany({ where: { businessId: business.id } }),
-      prisma.activityEvent.findMany({ where: { Activity: { businessId: business.id } }, take: 50, orderBy: { createdAt: 'desc' } }),
+      activityIds.length > 0 ? prisma.activityEvent.findMany({ where: { activityId: { in: activityIds } }, take: 50, orderBy: { createdAt: 'desc' } }) : Promise.resolve([]),
       prisma.meeting.findMany({ where: { businessId: business.id }, take: 20, orderBy: { createdAt: 'desc' } }),
       prisma.task.findMany({ where: { businessId: business.id }, take: 50, include: { employee: true }, orderBy: { createdAt: 'desc' } }),
       prisma.businessInsight.findMany({ where: { businessId: business.id }, take: 30, orderBy: { createdAt: 'desc' } }),

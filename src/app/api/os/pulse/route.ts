@@ -1,9 +1,14 @@
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { WorkforceService } from '@/lib/services/WorkforceService';
 
 export async function GET() {
   try {
-    const business = await prisma.business.findFirst();
+    const cookieStore = await cookies();
+    const businessId = cookieStore.get('businessId')?.value;
+    if (!businessId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const business = await prisma.business.findUnique({ where: { id: businessId } });
     if (!business) return NextResponse.json({ success: false });
 
     let urgentCallInitiation: any = null;
@@ -96,14 +101,15 @@ Does this present a risk, bottleneck, or opportunity? Reply with JSON: {"type": 
       take: 10
     });
 
-    const activeEmployees = await prisma.employee.count({ where: { businessId: business.id, isActive: true } });
-    const tasksCount = await prisma.task.count({ where: { businessId: business.id } });
+    const metrics = await WorkforceService.getPulseMetrics(business.id);
 
     return NextResponse.json({
       success: true,
       pulse: {
-        activeEmployees,
-        tasksCount,
+        activeEmployees: metrics.activeEmployees,
+        tasksCount: metrics.tasksCount,
+        workingEmployees: metrics.workingEmployees,
+        idleEmployees: metrics.idleEmployees,
         recentActivities,
         urgentCallInitiation
       }

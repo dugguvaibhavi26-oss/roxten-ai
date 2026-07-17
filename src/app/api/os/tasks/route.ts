@@ -1,9 +1,13 @@
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
 export async function GET() {
   try {
-    const business = await prisma.business.findFirst();
+    const cookieStore = await cookies();
+    const businessId = cookieStore.get('businessId')?.value;
+    if (!businessId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const business = await prisma.business.findUnique({ where: { id: businessId } });
     if (!business) return NextResponse.json({ error: 'No business configured' }, { status: 404 });
 
     const tasks = await prisma.task.findMany({
@@ -44,6 +48,36 @@ export async function PATCH(req: Request) {
           createdAt: new Date()
         }
       }).catch(() => {});
+
+      if (task.employeeId) {
+        // Find or create an activity for this task
+        let activity = await prisma.activity.findFirst({
+          where: { businessId: task.businessId, employeeId: task.employeeId, source: 'task_event' }
+        });
+
+        if (!activity) {
+          activity = await prisma.activity.create({
+            data: {
+              id: `act_task_${Date.now()}`,
+              businessId: task.businessId,
+              employeeId: task.employeeId,
+              source: 'task_event',
+              status: 'active',
+              updatedAt: new Date()
+            }
+          });
+        }
+
+        await prisma.activityEvent.create({
+          data: {
+            id: `evt_t_${Date.now()}_${Math.random().toString(36).substring(2,7)}`,
+            activityId: activity.id,
+            eventType: 'TASK_UPDATE',
+            actor: 'System',
+            content: `Task "${task.title}" status changed to ${status}.`
+          }
+        }).catch(() => {});
+      }
     }
 
     return NextResponse.json({ success: true, data: task });

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { FolderOpen, Search, Filter, BookOpen, Database, BrainCircuit, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { KnowledgeUploader } from '@/components/ui/os/KnowledgeUploader';
 
 export default function KnowledgeBasePage() {
   const [knowledge, setKnowledge] = useState<any[]>([]);
@@ -60,7 +61,14 @@ export default function KnowledgeBasePage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6 auto-rows-max">
+      <div className="flex-1 overflow-y-auto custom-scrollbar pr-4 space-y-8">
+        {/* Manual Ingestion */}
+        <div className="max-w-2xl">
+          <KnowledgeUploader onComplete={() => window.location.reload()} />
+        </div>
+
+        {/* Knowledge Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6 auto-rows-max">
         {loading ? (
           <div className="col-span-full p-16 text-center text-gray-500 flex flex-col items-center justify-center">
             <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4" />
@@ -112,6 +120,7 @@ export default function KnowledgeBasePage() {
             ))}
           </AnimatePresence>
         )}
+        </div>
       </div>
     </div>
   );

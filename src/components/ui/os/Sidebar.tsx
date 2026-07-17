@@ -6,8 +6,9 @@ import { usePathname } from 'next/navigation';
 import { 
   Home, Users, Brain, MessageSquare, Presentation, Calendar, 
   Settings as SettingsIcon, Workflow, Layout, Activity, FolderOpen,
-  Mic, Briefcase, Zap, Search, Bell, Target, Globe, Video
+  Mic, Briefcase, Zap, Search, Bell, Target, Globe, Video, LogOut
 } from 'lucide-react';
+import { useAuth } from '@/components/providers/AuthProvider';
 
 function NavGroup({ title, items, isHovered, pathname }: { title: string, items: any[], isHovered: boolean, pathname: string }) {
   return (
@@ -36,6 +37,7 @@ function NavGroup({ title, items, isHovered, pathname }: { title: string, items:
 export function Sidebar() {
   const pathname = usePathname();
   const [isHovered, setIsHovered] = useState(false);
+  const { signOut } = useAuth();
 
   const mainNav = [
     { name: 'Mission Control', href: '/dashboard', icon: Home },
@@ -95,6 +97,14 @@ export function Sidebar() {
 
       <div className="p-3 border-t border-gray-100 shrink-0 bg-gray-50/50">
         <NavGroup title="System" items={bottomNav} isHovered={isHovered} pathname={pathname} />
+        
+        <button 
+          onClick={signOut}
+          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all text-red-500 hover:bg-red-50"
+        >
+          <LogOut className="w-5 h-5 shrink-0" />
+          {isHovered && <span className="text-sm font-semibold whitespace-nowrap">Sign Out</span>}
+        </button>
       </div>
     </div>
   );

@@ -60,6 +60,9 @@ export async function runIntelligencePipeline(
     if (websiteUrl) {
       try {
         const res = await fetch(websiteUrl);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status} ${res.statusText}`);
+        }
         const html = await res.text();
         const $ = cheerio.load(html);
         
@@ -68,8 +71,9 @@ export async function runIntelligencePipeline(
         const pageText = $('body').text().replace(/\s+/g, ' ').trim();
         
         combinedCorpus += `\n\n--- Website: ${websiteUrl} ---\n${pageText.substring(0, 15000)}`;
-      } catch (e) {
+      } catch (e: any) {
         console.warn('Failed to crawl website:', e);
+        await updatePipelineJob(jobId, { status: 'crawling', progress: 15, message: `Warning: Could not fetch website (${e.message}). Proceeding with provided documents...` });
       }
     }
 

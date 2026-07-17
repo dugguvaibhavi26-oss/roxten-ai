@@ -9,7 +9,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Text is required' }, { status: 400 });
     }
 
-    const stream = EdgeTTS.synthesize(text, {
+    const stream = await EdgeTTS.synthesize(text, {
       voice,
       pitch,
       rate
@@ -24,6 +24,6 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     console.error('TTS synthesize error:', error);
-    return NextResponse.json({ error: error.message || 'Failed to synthesize speech' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Failed to synthesize speech', stack: error.stack }, { status: 500 });
   }
 }

@@ -54,7 +54,7 @@ export default function Marketplace() {
     setHiring(true);
     setNotification(null);
     try {
-      const galaxyRes = await fetch('/api/os/galaxy');
+      const galaxyRes = await fetch('/api/os/galaxy?t=' + Date.now());
       const galaxy = await galaxyRes.json();
       
       const res = await fetch('/api/os/workforce/hire', {

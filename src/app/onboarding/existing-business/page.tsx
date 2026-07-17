@@ -39,7 +39,7 @@ export default function ExistingBusinessOnboarding() {
       const { collection, addDoc } = await import('firebase/firestore');
 
       // 1. Upload Files via server proxy and extract text
-      const uploadedFiles = [];
+      const uploadedFiles: { name: string; url: string }[] = [];
       let combinedText = '';
       
       const tempId = user?.uid || Date.now().toString();

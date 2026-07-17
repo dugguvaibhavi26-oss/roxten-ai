@@ -27,7 +27,7 @@ export default function CommunicationFeed() {
     setLoading(true);
     try {
       const [empRes, thrRes] = await Promise.all([
-        fetch('/api/os/galaxy'),
+        fetch('/api/os/galaxy?t=' + Date.now()),
         fetch('/api/os/communication')
       ]);
       

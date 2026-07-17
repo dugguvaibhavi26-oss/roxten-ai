@@ -2,9 +2,9 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, MicOff, Pause, Play, Square, RotateCcw, PhoneOff, Settings, Volume2 } from 'lucide-react';
+import { Mic, MicOff, Pause, Play, Square, RotateCcw, PhoneOff, Settings, Volume2, Send, X, AlertCircle } from 'lucide-react';
 
-export type VoiceState = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'paused' | 'interrupted' | 'offline';
+export type VoiceState = 'idle' | 'connecting' | 'listening' | 'reviewing' | 'thinking' | 'speaking' | 'paused' | 'interrupted' | 'offline';
 
 interface VoiceContextProps {
   voiceState: VoiceState;
@@ -25,6 +25,12 @@ interface VoiceContextProps {
   simulateAIResponse: (text: string) => void;
   timeElapsed: number;
   history: {role: string, content: string}[];
+  transcript: string;
+  interimTranscript: string;
+  stopListeningAndReview: () => void;
+  submitTranscript: (text: string) => void;
+  cancelTranscript: () => void;
+  speechError: string | null;
 }
 
 const VoiceContext = createContext<VoiceContextProps | undefined>(undefined);
@@ -33,6 +39,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(1);
+  const [timeElapsed, setTimeElapsed] = useState(0);
+  const [handoverTrigger, setHandoverTrigger] = useState(false);
+  
+  // New States for Transcript Review
+  const [transcript, setTranscript] = useState('');
+  const [interimTranscript, setInterimTranscript] = useState('');
   const [activeEmployeeId, setActiveEmployeeId] = useState<string | null>(null);
   const [activeEmployeeName, setActiveEmployeeName] = useState<string | null>(null);
   const [activeEmployeeRole, setActiveEmployeeRole] = useState<string | null>(null);
@@ -40,6 +52,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [history, setHistory] = useState<{role: string, content: string}[]>([]);
 
   const [chatEndpoint, setChatEndpoint] = useState<string | null>(null);
+  const [speechError, setSpeechError] = useState<string | null>(null);
 
   // Refs for stale closures in Web Speech API event listeners
   const voiceStateRef = useRef<VoiceState>('idle');
@@ -59,7 +72,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
-  const [timeElapsed, setTimeElapsed] = useState(0);
 
   useEffect(() => {
     if ('speechSynthesis' in window) {
@@ -99,19 +111,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     return () => clearInterval(timer);
   }, [voiceState]);
 
-  const updateVolume = (vol: number) => {
+  const setVolumeAndPersist = (vol: number) => {
     setVolume(vol);
     localStorage.setItem('rox_voice_volume', vol.toString());
   };
 
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
-
   const [handoverQueue, setHandoverQueue] = useState<any>(null);
-  const [handoverTrigger, setHandoverTrigger] = useState(false);
 
   useEffect(() => {
     if (handoverTrigger && activeEmployeeId) {
@@ -121,42 +126,46 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, [activeEmployeeId, handoverTrigger]);
 
   const startListening = () => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) return;
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      console.warn("Speech recognition not supported in this browser.");
+      return;
+    }
     
-    // We no longer cancel TTS on startListening natively, because startListening is meant to run continuously for full duplex.
-    // Instead, we only transition state to listening if not currently speaking.
-    if (!synthRef.current?.speaking) {
-      setVoiceState('listening');
+    // Clear transcripts when starting a fresh listen phase
+    if (voiceStateRef.current !== 'reviewing') {
+      setTranscript('');
+      setInterimTranscript('');
     }
 
-    if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch(e) {}
+    if (!recognitionRef.current) {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = 'en-US';
     }
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    recognitionRef.current = new SpeechRecognition();
-    recognitionRef.current.continuous = false; // Set to false for faster silence detection (snappy response)
-    recognitionRef.current.interimResults = true; // Get interim results to cut off AI instantly
-    
-    // Attempt to hint browser for AEC & Noise Suppression (non-standard but supported in some forks)
-    recognitionRef.current.echoCancellation = true;
-    recognitionRef.current.noiseSuppression = true;
 
     recognitionRef.current.onresult = (event: any) => {
-      let interimTranscript = '';
-      let finalTranscript = '';
-
+      // Don't record while actually reviewing, but allow if it got stuck in thinking/speaking
+      if (voiceStateRef.current === 'reviewing') return;
+      
+      let finalStr = '';
+      let interimStr = '';
+      
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
+          finalStr += event.results[i][0].transcript;
         } else {
-          interimTranscript += event.results[i][0].transcript;
+          interimStr += event.results[i][0].transcript;
         }
       }
       
-      const currentText = finalTranscript || interimTranscript;
+      if (finalStr) setTranscript(prev => prev + ' ' + finalStr);
+      setInterimTranscript(interimStr);
       
-      if (currentText.trim()) {
+      const currentText = (finalStr || interimStr).trim();
+      
+      if (currentText) {
         // FULL DUPLEX INTERRUPTION: Instantly cut off AI even on interim results!
         if (activeAudioRef.current && !activeAudioRef.current.paused) {
           activeAudioRef.current.pause();
@@ -168,30 +177,66 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           setVoiceState('interrupted');
         }
       }
-
-      if (finalTranscript.trim()) {
-        handleVoiceInput(finalTranscript);
-      }
     };
     
     recognitionRef.current.onerror = (e: any) => {
-      console.error('Speech recognition error', e);
-      // Don't auto-restart immediately on error to avoid rapid looping, but restart after a delay
-      if (voiceStateRef.current !== 'thinking' && voiceStateRef.current !== 'idle') {
-         setTimeout(() => { if (!isMutedRef.current) startListening(); }, 1500);
+      console.error('Speech recognition error', e.error);
+      
+      let errorMsg = e.error;
+      if (e.error === 'not-allowed') errorMsg = 'Mic permission denied';
+      if (e.error === 'no-speech') errorMsg = 'No speech detected (timeout)';
+      if (e.error === 'network') errorMsg = 'Network error';
+      if (e.error === 'aborted') errorMsg = null; // intentional abort
+      
+      if (errorMsg) setSpeechError(errorMsg);
+
+      // Don't auto-restart immediately on error if it's a fatal error like not-allowed
+      if (voiceStateRef.current === 'listening' && e.error !== 'not-allowed') {
+         setTimeout(() => { if (!isMutedRef.current && voiceStateRef.current === 'listening') startListening(); }, 1500);
+      } else if (e.error === 'not-allowed') {
+         setVoiceState('idle'); // Stop listening if mic is denied
       }
     };
     
+    recognitionRef.current.onstart = () => {
+       setSpeechError(null);
+    };
+    
     recognitionRef.current.onend = () => {
-      // Always loop listening unless muted or call ended
-      if (!isMutedRef.current && voiceStateRef.current !== 'idle') {
-         startListening(); 
+      // If we're in listening state, keep looping. If reviewing, stay stopped.
+      if (!isMutedRef.current && voiceStateRef.current === 'listening') {
+         try { recognitionRef.current.start(); } catch(e) {}
       }
     };
 
     if (!isMutedRef.current) {
       try { recognitionRef.current.start(); } catch (e) {}
     }
+  };
+
+  const stopListeningAndReview = () => {
+    if (recognitionRef.current) recognitionRef.current.stop();
+    setVoiceState('reviewing');
+  };
+
+  const submitTranscript = () => {
+    const finalSentText = (transcript + ' ' + interimTranscript).trim();
+    if (!finalSentText) {
+       // If empty, just cancel reviewing and go back to listening
+       setTranscript('');
+       setInterimTranscript('');
+       setVoiceState('listening');
+       startListening();
+       return;
+    }
+    handleVoiceInput(finalSentText);
+  };
+
+  const cancelTranscript = () => {
+    setTranscript('');
+    setInterimTranscript('');
+    setVoiceState('listening');
+    startListening();
   };
 
   const handleVoiceInput = async (text: string) => {
@@ -224,6 +269,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         
         setLastResponse(responseText);
         setHistory(prev => [...prev, { role: 'assistant', content: responseText }]);
+        setTranscript('');
+        setInterimTranscript('');
         
         if (data.handoverEmployee) {
           setHandoverQueue(data.handoverEmployee);
@@ -261,47 +308,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     
     setVoiceState('speaking');
 
-    const dbProfile = (window as any)._activeVoiceProfile || {};
-    // Use stored voiceId or fallback to a neural voice
-    const voiceId = dbProfile.voiceId || "en-US-AriaNeural";
-
-    try {
-      const res = await fetch('/api/os/voice/synthesize', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({
-            text,
-            voice: voiceId,
-            pitch: dbProfile.voicePitch || '+0Hz',
-            rate: dbProfile.voiceSpeed || '+0%'
-         })
-      });
-
-      if (!res.ok) throw new Error("TTS Failed");
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.volume = volume;
-      activeAudioRef.current = audio;
-
-      audio.onended = () => {
-         URL.revokeObjectURL(url);
-         activeAudioRef.current = null;
-         handleSpeechEnd();
-      };
-
-      audio.onerror = () => {
-         URL.revokeObjectURL(url);
-         activeAudioRef.current = null;
-         fallbackSpeechSynthesis(text);
-      };
-
-      await audio.play();
-    } catch (error) {
-      console.error("Edge TTS failed, falling back to browser synthesis", error);
-      fallbackSpeechSynthesis(text);
-    }
+    // EdgeTTS endpoint is blocked by MS security tokens, use native browser synthesis
+    fallbackSpeechSynthesis(text);
   };
 
   const handleSpeechEnd = () => {
@@ -353,11 +361,35 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (dbProfile.voiceSpeed) utterance.rate = parseFloat(dbProfile.voiceSpeed);
     }
     
-    utterance.onstart = () => setVoiceState('speaking');
+    let isHandled = false;
+    
+    utterance.onstart = () => {
+      setVoiceState('speaking');
+    };
+    
     utterance.onend = () => {
+       if (isHandled) return;
+       isHandled = true;
        (window as any)._currentUtterance = null;
        handleSpeechEnd();
     };
+
+    utterance.onerror = (e) => {
+       console.error("SpeechSynthesis error:", e);
+       if (isHandled) return;
+       isHandled = true;
+       handleSpeechEnd();
+    };
+
+    // Safety timeout in case browser speech engine completely fails or blocks without error
+    setTimeout(() => {
+       if (!isHandled && voiceStateRef.current !== 'paused') {
+           console.warn("SpeechSynthesis safety timeout triggered");
+           isHandled = true;
+           handleSpeechEnd();
+       }
+    }, Math.max(text.length * 100, 3000)); // Rough estimate based on text length + padding
+
     (window as any)._currentUtterance = utterance;
     synthRef.current.speak(utterance);
   };
@@ -485,7 +517,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       voiceState, startCall, endCall, isMuted, toggleMute, 
       pauseSpeaking, resumeSpeaking, stopSpeaking, replayLastResponse,
       volume, setVolume, activeEmployeeId, activeEmployeeName, activeEmployeeRole, handleVoiceInput, simulateAIResponse,
-      timeElapsed, history
+      timeElapsed, history,
+      transcript, interimTranscript, stopListeningAndReview, submitTranscript, cancelTranscript, speechError
     }}>
       {children}
       <VoiceControlBar />
@@ -504,7 +537,8 @@ const VoiceControlBar = () => {
   const { 
     voiceState, endCall, isMuted, toggleMute, pauseSpeaking, 
     resumeSpeaking, stopSpeaking, replayLastResponse, volume, setVolume,
-    activeEmployeeName, activeEmployeeRole, timeElapsed
+    activeEmployeeName, activeEmployeeRole, timeElapsed,
+    transcript, interimTranscript, stopListeningAndReview, submitTranscript, cancelTranscript, speechError
   } = useVoice();
 
   if (voiceState === 'idle') return null;
@@ -562,42 +596,100 @@ const VoiceControlBar = () => {
            </div>
         </div>
 
-        {/* Controls */}
-        <div className="p-2 rounded-2xl bg-white backdrop-blur-2xl border border-gray-200 flex items-center gap-2 shadow-2xl">
-          <button 
-            onClick={toggleMute}
-            className={`p-4 rounded-xl transition-all ${isMuted ? 'bg-red-500/20 text-red-500' : 'hover:bg-gray-50 text-gray-900'}`}
-            title="Mute / Unmute (M)"
+        {/* Transcript Review UI */}
+        {voiceState === 'reviewing' && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="p-6 rounded-3xl bg-white backdrop-blur-2xl border border-gray-200 shadow-2xl flex flex-col gap-4 max-w-md w-full"
           >
-            {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-          </button>
-          
-          <div className="w-px h-8 bg-gray-50 mx-1" />
+            <div className="flex justify-between items-center w-full">
+              <div className="text-sm font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                <Mic className="w-4 h-4" /> Transcript Preview
+              </div>
+              <button 
+                onClick={endCall}
+                className="text-gray-400 hover:text-gray-700 transition-colors p-1 rounded-lg hover:bg-gray-100"
+                title="End Call"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl max-h-40 overflow-y-auto text-gray-800 text-lg leading-relaxed">
+              {(transcript + ' ' + interimTranscript).trim() || <span className="italic text-gray-400">No speech detected...</span>}
+            </div>
+            <div className="flex items-center gap-3 w-full">
+              <button 
+                onClick={cancelTranscript}
+                className="flex-1 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold transition-all text-sm"
+              >
+                Cancel & Retake
+              </button>
+              <button 
+                onClick={() => submitTranscript((transcript + ' ' + interimTranscript).trim())}
+                disabled={!(transcript + ' ' + interimTranscript).trim()}
+                className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold transition-all shadow-[0_0_15px_rgba(99,102,241,0.4)] text-sm flex items-center justify-center gap-2"
+              >
+                <Send className="w-4 h-4" /> Submit
+              </button>
+            </div>
+          </motion.div>
+        )}
 
-          {voiceState === 'speaking' ? (
-            <button onClick={pauseSpeaking} className="p-4 rounded-xl hover:bg-gray-50 text-gray-900 transition-all" title="Pause">
-              <Pause className="w-5 h-5" />
+        {/* Controls */}
+        {voiceState !== 'reviewing' && (
+          <div className="p-2 rounded-2xl bg-white backdrop-blur-2xl border border-gray-200 flex items-center gap-2 shadow-2xl">
+            {speechError && (
+               <div className="px-4 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-bold flex items-center gap-2 mr-2">
+                 <AlertCircle className="w-4 h-4" /> {speechError}
+               </div>
+            )}
+            
+            {voiceState === 'listening' ? (
+              <button 
+                onClick={stopListeningAndReview}
+                className="px-6 py-4 rounded-xl bg-indigo-100 hover:bg-indigo-200 text-indigo-700 transition-all font-bold text-sm flex items-center gap-2"
+                title="Stop Recording"
+              >
+                <Square className="w-4 h-4" /> Stop Recording
+              </button>
+            ) : (
+              <button 
+                onClick={toggleMute}
+                className={`p-4 rounded-xl transition-all ${isMuted ? 'bg-red-500/20 text-red-500' : 'hover:bg-gray-50 text-gray-900'}`}
+                title="Mute / Unmute (M)"
+              >
+                {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              </button>
+            )}
+            
+            <div className="w-px h-8 bg-gray-50 mx-1" />
+
+            {voiceState === 'speaking' ? (
+              <button onClick={pauseSpeaking} className="p-4 rounded-xl hover:bg-gray-50 text-gray-900 transition-all" title="Pause">
+                <Pause className="w-5 h-5" />
+              </button>
+            ) : voiceState === 'paused' ? (
+              <button onClick={resumeSpeaking} className="p-4 rounded-xl hover:bg-gray-50 text-gray-900 transition-all" title="Resume">
+                <Play className="w-5 h-5" />
+              </button>
+            ) : null}
+
+            <button onClick={stopSpeaking} className="p-4 rounded-xl hover:bg-gray-50 text-gray-900 transition-all" title="Stop Speaking Instantly (Esc)">
+              <Square className="w-5 h-5" />
             </button>
-          ) : voiceState === 'paused' ? (
-             <button onClick={resumeSpeaking} className="p-4 rounded-xl hover:bg-gray-50 text-gray-900 transition-all" title="Resume">
-              <Play className="w-5 h-5" />
+            
+            <button onClick={replayLastResponse} className="p-4 rounded-xl hover:bg-gray-50 text-gray-900 transition-all" title="Replay Last Response">
+              <RotateCcw className="w-5 h-5" />
             </button>
-          ) : null}
 
-          <button onClick={stopSpeaking} className="p-4 rounded-xl hover:bg-gray-50 text-gray-900 transition-all" title="Stop Speaking Instantly (Esc)">
-            <Square className="w-5 h-5" />
-          </button>
-          
-          <button onClick={replayLastResponse} className="p-4 rounded-xl hover:bg-gray-50 text-gray-900 transition-all" title="Replay Last Response">
-            <RotateCcw className="w-5 h-5" />
-          </button>
+            <div className="w-px h-8 bg-gray-50 mx-1" />
 
-          <div className="w-px h-8 bg-gray-50 mx-1" />
-
-          <button onClick={endCall} className="px-6 py-4 rounded-xl bg-red-600 hover:bg-red-700 text-gray-900 transition-all shadow-[0_0_15px_rgba(220,38,38,0.4)] flex items-center gap-2 font-bold text-sm">
-            <PhoneOff className="w-4 h-4" /> End Call
-          </button>
-        </div>
+            <button onClick={endCall} className="px-6 py-4 rounded-xl bg-red-600 hover:bg-red-700 text-white transition-all shadow-[0_0_15px_rgba(220,38,38,0.4)] flex items-center gap-2 font-bold text-sm">
+              <PhoneOff className="w-4 h-4" /> End Call
+            </button>
+          </div>
+        )}
       </motion.div>
     </AnimatePresence>
   );

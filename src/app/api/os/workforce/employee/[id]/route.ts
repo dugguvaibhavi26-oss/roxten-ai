@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { IntelligenceService } from '@/lib/services/IntelligenceService';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -10,10 +11,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       where: { id },
       include: {
         department: true,
-        memories: {
-          orderBy: { createdAt: 'desc' },
-          take: 50
-        },
         tasks: {
           orderBy: { createdAt: 'desc' }
         }
@@ -25,32 +22,49 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     // Fetch related activity events for this employee specifically
-    const activities = await prisma.activityEvent.findMany({
-      where: {
-        Activity: {
-          employeeId: employee.id
-        }
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 20
+    const employeeActivities = await prisma.activity.findMany({
+      where: { employeeId: employee.id }
     });
-
-    // Fetch knowledge based on employee's knowledgeAccessTags
-    let knowledge: any[] = [];
-    if (employee.knowledgeAccessTags && employee.knowledgeAccessTags.length > 0) {
-      knowledge = await prisma.businessKnowledge.findMany({
-        where: {
-          businessId: employee.businessId,
-          keywords: {
-            hasSome: employee.knowledgeAccessTags
-          }
-        },
-        take: 10
+    
+    let activities: any[] = [];
+    if (employeeActivities.length > 0) {
+      const activityIds = employeeActivities.map((a: any) => a.id);
+      
+      // Firebase 'in' max array size is 10, so we slice it just to be safe if it gets large, but for now we'll take top 10 recent activities
+      const topActivityIds = activityIds.slice(0, 10);
+      
+      activities = await prisma.activityEvent.findMany({
+        where: { activityId: { in: topActivityIds } },
+        orderBy: { createdAt: 'desc' },
+        take: 20
       });
     }
 
+    // Fetch employee memory from IntelligenceService
+    const memories = await IntelligenceService.getEmployeeMemories(employee.businessId, employee.id);
+
+    // Fetch knowledge based on employee's department/tags
+    const allKnowledge = await IntelligenceService.getKnowledgeBase(employee.businessId);
+    
+    // Simple filter: if employee has tags, match them. Otherwise, give them everything or department-specific knowledge.
+    const knowledge = allKnowledge.filter(k => {
+       if (!employee.knowledgeAccessTags || employee.knowledgeAccessTags.length === 0) return true; // Default to all if no tags set
+       const kTags = k.tags || k.keywords || [];
+       return employee.knowledgeAccessTags.some(tag => kTags.includes(tag)) || k.department === employee.department?.name;
+    });
+
+    // We add the memories directly to the employee object to preserve UI compat
+    const employeeWithMemories = {
+      ...employee,
+      memories: memories.map(m => ({
+        id: m.id,
+        key: m.topic || m.title || 'Memory',
+        value: m.content || m.summary || m.value || ''
+      }))
+    };
+
     return NextResponse.json({
-      employee,
+      employee: employeeWithMemories,
       activities,
       knowledge
     });
@@ -73,9 +87,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         gender: data.gender,
         accent: data.accent,
         voiceSpeed: data.voiceSpeed,
-        voicePitch: data.voicePitch,
-        speakingStyle: data.speakingStyle,
-        temperature: data.temperature,
+        voicePitch: data.voicePitch !== undefined ? data.voicePitch : undefined,
+        speakingStyle: data.speakingStyle !== undefined ? data.speakingStyle : undefined,
+        temperature: data.temperature !== undefined ? data.temperature : undefined,
+        personality: data.personality !== undefined ? data.personality : undefined,
+        responsibilities: data.responsibilities !== undefined ? data.responsibilities : undefined,
+        goals: data.goals !== undefined ? data.goals : undefined,
+        decisionBoundaries: data.decisionBoundaries !== undefined ? data.decisionBoundaries : undefined,
+        knowledgeAccessTags: data.knowledgeAccessTags !== undefined ? data.knowledgeAccessTags : undefined,
       }
     });
 

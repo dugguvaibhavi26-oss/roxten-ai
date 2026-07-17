@@ -93,7 +93,7 @@ export default function GalaxyPage() {
                  <div className="w-px bg-gray-200" />
                  <div className="text-center">
                    <div className="text-2xl font-bold text-gray-900">
-                     {(data.departments?.reduce((acc: number, d: any) => acc + d.employees.length, 0) || 0) + (data.employees?.length || 0)}
+                     {(data.departments?.reduce((acc: number, d: any) => acc + (d.employees?.length || 0), 0) || 0) + (data.employees?.length || 0)}
                    </div>
                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-1">Agents</div>
                  </div>

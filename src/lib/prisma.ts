@@ -43,6 +43,9 @@ class FirestoreAdapter {
         if (vObj.hasSome) {
           constraints.push(where(k, 'array-contains-any', vObj.hasSome));
         }
+        if (vObj.in) {
+          constraints.push(where(k, 'in', vObj.in));
+        }
       }
     }
     return constraints;

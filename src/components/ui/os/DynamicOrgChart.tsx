@@ -24,7 +24,7 @@ export function DynamicOrgChart() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/os/galaxy')
+    fetch('/api/os/galaxy?t=' + Date.now())
       .then(res => res.json())
       .then(d => {
         setData({
