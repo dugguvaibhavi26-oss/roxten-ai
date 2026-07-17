@@ -10,7 +10,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 export default function CoFounderOnboarding() {
   const router = useRouter();
   const { startCall, voiceState, history, endCall, isMuted, toggleMute } = useVoice();
-  const { refreshUserData } = useAuth();
+  const { user, refreshUserData } = useAuth();
   
   const [stage, setStage] = useState<'intro' | 'interview' | 'generating' | 'complete'>('intro');
   const [orgChart, setOrgChart] = useState<any>(null);
