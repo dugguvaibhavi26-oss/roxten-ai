@@ -1,0 +1,23 @@
+import { NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
+
+export async function GET() {
+  try {
+    const business = await prisma.business.findFirst();
+    if (!business) return NextResponse.json({ error: 'No business configured' }, { status: 404 });
+
+    const departments = await prisma.department.findMany({
+      where: { businessId: business.id },
+      include: {
+        employees: {
+          select: { id: true, name: true, role: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return NextResponse.json({ success: true, data: departments });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}

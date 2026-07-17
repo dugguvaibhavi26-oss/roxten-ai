@@ -1,0 +1,838 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Business {
+  id             String               @id @default(uuid())
+  name           String
+  industry       String?
+  brandVoice     String?
+  services       String?
+  products       String?
+  workingHours   String?
+  contactDetails String?
+  locations      String?
+  policies       String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  defaultVoiceId String?
+  insights       BusinessInsight[]
+  knowledge      BusinessKnowledge[]
+  reports        BusinessReport[]
+  rules          BusinessRule[]
+  channelConfigs ChannelConfig[]
+  departments    Department[]
+  employees      Employee[]
+  deployments    EmployeeDeployment[]
+  integrations   Integration[]
+  health         KnowledgeHealth?
+  memories       Memory[]
+  
+  // AI-OS EXPANSION RELATIONS
+  notifications  Notification[]
+  businessPlan   BusinessPlan?
+  meetings       Meeting[]
+  knowledgeDocs  KnowledgeDocument[]
+  timelineEvents BusinessTimelineEvent[]
+  marketingCampaigns MarketingCampaign[]
+}
+
+model Department {
+  id          String     @id @default(uuid())
+  businessId  String
+  name        String
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  business    Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employees   Employee[]
+}
+
+model KnowledgeDocument {
+  id          String   @id @default(uuid())
+  businessId  String
+  title       String
+  content     String
+  tags        String[]
+  createdAt   DateTime @default(now())
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model Employee {
+  id                  String               @id @default(uuid())
+  businessId          String
+  departmentId        String?
+  name                String
+  role                String
+  personality         String?
+  conversationStyle   String?
+  responsibilities    String?
+  goals               String?
+  decisionBoundaries  String?
+  escalationBehaviour String?
+  allowedTools        String[]
+  permissions         String[]
+  knowledgeAccessTags String[]
+  workingHours        String?
+  isActive            Boolean              @default(true)
+  version             Int                  @default(1)
+  runtimeProfileId    String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  selectedVoiceId     String?
+  personalityConfig   Json?
+  ruleAccessTags      String[]
+  isDeployed          Boolean              @default(false)
+  business            Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  department          Department?          @relation(fields: [departmentId], references: [id])
+  runtimeProfile      RuntimeProfile?      @relation(fields: [runtimeProfileId], references: [id])
+  analytics           EmployeeAnalytics?
+  deployments         EmployeeDeployment[]
+  skills              EmployeeSkill[]
+  memories            Memory[]
+  sessions            Session[]
+  testingSessions     TestingSession[]
+
+  // AI-OS EXPANSION RELATIONS
+  tasks               Task[]
+  gamification        GamificationProfile?
+
+  // AI-OS EXPERIENCE EXPANSION
+  voiceProvider       String?
+  voiceId             String?
+  accent              String?
+  gender              String?
+  voiceSpeed          Float?   @default(1.0)
+  voicePitch          Float?   @default(1.0)
+  temperature         Float?   @default(0.7)
+  speakingStyle       String?
+  mood                String?  @default("NEUTRAL")
+  context             String?
+}
+
+model EmployeeSkill {
+  employeeId String
+  skillId    String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  Skill      Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, skillId])
+}
+
+model EmployeeAnalytics {
+  id                 String   @id @default(uuid())
+  employeeId         String   @unique
+  successMetrics     String[]
+  totalConversations Int      @default(0)
+  successfulGoals    Int      @default(0)
+  updatedAt          DateTime
+  employee           Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model RuntimeProfile {
+  id        String     @id @default(uuid())
+  name      String
+  config    Json
+  createdAt DateTime   @default(now())
+  updatedAt DateTime
+  employees Employee[]
+}
+
+model EmployeeDeployment {
+  id         String   @id @default(uuid())
+  employeeId String
+  businessId String
+  snapshot   Json
+  version    Int
+  createdAt  DateTime @default(now())
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id         String    @id @default(uuid())
+  employeeId String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  Memory     Memory[]
+  Message    Message[]
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model Memory {
+  id         String    @id @default(uuid())
+  businessId String
+  employeeId String?
+  sessionId  String?
+  type       String
+  key        String
+  value      String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime
+  status     String    @default("PENDING")
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+  Session    Session?  @relation(fields: [sessionId], references: [id])
+}
+
+model TestingSession {
+  id               String    @id @default(uuid())
+  employeeId       String
+  type             String
+  startTime        DateTime  @default(now())
+  endTime          DateTime?
+  durationMs       Int?
+  messageCount     Int       @default(0)
+  voiceUsed        String?
+  knowledgeHits    Int       @default(0)
+  ruleHits         Int       @default(0)
+  memoryHits       Int       @default(0)
+  toolCalls        Int       @default(0)
+  averageLatencyMs Int       @default(0)
+  status           String    @default("ACTIVE")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model BusinessKnowledge {
+  id         String   @id @default(uuid())
+  businessId String
+  title      String
+  content    String
+  keywords   String[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  sourceType String   @default("TEXT")
+  sourceUrl  String?
+  status     String   @default("PENDING")
+  version    Int      @default(1)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model BusinessRule {
+  id         String   @id @default(uuid())
+  businessId String
+  name       String
+  condition  String
+  action     String
+  priority   Int      @default(0)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  status     String   @default("PENDING")
+  tags       String[]
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model KnowledgeHealth {
+  id          String   @id @default(uuid())
+  businessId  String   @unique
+  score       Int      @default(100)
+  metrics     Json
+  suggestions String[]
+  warnings    String[]
+  lastScanned DateTime @default(now())
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model Integration {
+  id         String   @id @default(uuid())
+  businessId String
+  provider   String
+  apiKey     String
+  config     Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model ChannelConfig {
+  id           String   @id @default(uuid())
+  businessId   String
+  type         String
+  provider     String
+  identifier   String?
+  config       Json?
+  status       String   @default("active")
+  healthStatus String   @default("healthy")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model BusinessReport {
+  id          String   @id @default(uuid())
+  businessId  String
+  type        String
+  periodStart DateTime
+  periodEnd   DateTime
+  metrics     Json
+  summary     String
+  highlights  String[]
+  createdAt   DateTime @default(now())
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model BusinessInsight {
+  id          String   @id @default(uuid())
+  businessId  String
+  type        String
+  title       String
+  description String
+  priority    String   @default("MEDIUM")
+  status      String   @default("PENDING")
+  actionUrl   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model Activity {
+  id               String             @id
+  businessId       String
+  employeeId       String
+  contactId        String?
+  sessionId        String?            @unique
+  source           String             @default("webchat")
+  status           String             @default("ai_active")
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime
+  Contact          Contact?           @relation(fields: [contactId], references: [id])
+  ActivityEvent    ActivityEvent[]
+  CommunicationLog CommunicationLog[]
+}
+
+model ActivityEvent {
+  id         String   @id
+  activityId String
+  eventType  String
+  messageId  String?
+  actor      String
+  content    String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  Activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+}
+
+model CommunicationLog {
+  id             String   @id
+  activityId     String
+  channel        String
+  responseTimeMs Int
+  deliveryTimeMs Int?
+  isFailure      Boolean  @default(false)
+  voiceUsed      String?
+  providerUsed   String?
+  cost           Float    @default(0)
+  messageCount   Int      @default(1)
+  durationMs     Int?
+  inputTokens    Int      @default(0)
+  outputTokens   Int      @default(0)
+  toolCalls      Int      @default(0)
+  knowledgeUsage Int      @default(0)
+  memoryUsage    Int      @default(0)
+  rating         Int?
+  sentiment      String?
+  escalated      Boolean  @default(false)
+  employeeId     String?
+  businessId     String?
+  executionId    String?
+  createdAt      DateTime @default(now())
+  Activity       Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+}
+
+model Contact {
+  id         String     @id
+  businessId String
+  type       String     @default("customer")
+  name       String?
+  identifier String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime
+  Activity   Activity[]
+}
+
+model EmployeeTemplate {
+  id                          String                       @id
+  name                        String
+  description                 String?
+  role                        String
+  personality                 String?
+  responsibilities            String?
+  goals                       String?
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime
+  bestFor                     String[]
+  certifications              String[]
+  conversationStyle           String?
+  decisionBoundaries          String?
+  department                  String?
+  difficulty                  String
+  escalationBehaviour         String?
+  expectedAutomation          Int
+  experienceLevel             String?
+  industries                  String[]
+  languages                   String[]
+  limitations                 String[]
+  setupTime                   String?
+  strengths                   String[]
+  trainingLevel               String?
+  TemplateKPI                 TemplateKPI[]
+  TemplateKnowledge           TemplateKnowledge[]
+  TemplateMemoryConfig        TemplateMemoryConfig?
+  TemplatePrompt              TemplatePrompt[]
+  TemplateRule                TemplateRule[]
+  TemplateSkill               TemplateSkill[]
+  TemplateTool                TemplateTool[]
+  TemplateVoiceRecommendation TemplateVoiceRecommendation?
+}
+
+model Message {
+  id        String   @id
+  sessionId String
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+  Session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+model Skill {
+  id            String          @id
+  name          String          @unique
+  description   String?
+  EmployeeSkill EmployeeSkill[]
+}
+
+model TemplateKPI {
+  id               String           @id
+  templateId       String
+  name             String
+  description      String?
+  EmployeeTemplate EmployeeTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+model TemplateKnowledge {
+  id               String           @id
+  templateId       String
+  title            String
+  content          String
+  category         String?
+  tags             String[]
+  priority         Int              @default(0)
+  EmployeeTemplate EmployeeTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+model TemplateMemoryConfig {
+  id               String           @id
+  templateId       String           @unique
+  config           Json
+  EmployeeTemplate EmployeeTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+model TemplatePrompt {
+  id               String           @id
+  templateId       String
+  name             String
+  content          String
+  EmployeeTemplate EmployeeTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+model TemplateRule {
+  id               String           @id
+  templateId       String
+  name             String
+  description      String
+  condition        String
+  action           String
+  severity         String?
+  tags             String[]
+  EmployeeTemplate EmployeeTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+model TemplateSkill {
+  id               String           @id
+  templateId       String
+  name             String
+  description      String?
+  EmployeeTemplate EmployeeTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+model TemplateTool {
+  id               String           @id
+  templateId       String
+  name             String
+  description      String?
+  EmployeeTemplate EmployeeTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+model TemplateVoiceRecommendation {
+  id               String           @id
+  templateId       String           @unique
+  provider         String
+  voiceId          String
+  settings         Json?
+  EmployeeTemplate EmployeeTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+model TrainingProposal {
+  id           String   @id
+  businessId   String
+  source       String
+  sourceId     String?
+  status       String   @default("pending")
+  proposedType String
+  content      Json
+  createdAt    DateTime @default(now())
+}
+
+model Voice {
+  id                 String   @id
+  businessId         String?
+  displayName        String
+  provider           String
+  voiceId            String   @unique
+  gender             String?
+  accent             String?
+  country            String?
+  age                String?
+  tone               String?
+  emotion            String?
+  style              String?
+  bestUse            String[]
+  category           String?
+  previewUrl         String?
+  isPremium          Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime
+  capabilities       String[]
+  costPerMinute      Float    @default(0)
+  description        String?
+  downloads          Int      @default(0)
+  quality            String   @default("STANDARD")
+  rating             Float?
+  status             String   @default("ACTIVE")
+  supportedLanguages String[]
+  tags               String[]
+  type               String   @default("GLOBAL")
+  usageCount         Int      @default(0)
+
+  // AI-OS Voice Relations
+  versions           VoiceVersion[]
+  analytics          VoiceAnalytics?
+  benchmarks         VoiceBenchmark[]
+}
+
+model VoiceVersion {
+  id                 String   @id @default(uuid())
+  voiceId            String
+  voice              Voice    @relation(fields: [voiceId], references: [id], onDelete: Cascade)
+  versionNumber      Int      @default(1)
+  originalAudioUrl   String?
+  generatedAudioUrl  String?
+  prompt             String?
+  language           String   @default("en")
+  emotionPresets     Json?
+  pronunciationDict  Json?
+  metadata           Json?
+  status             String   @default("ACTIVE")
+  createdAt          DateTime @default(now())
+}
+
+model VoiceAnalytics {
+  id                 String   @id @default(uuid())
+  voiceId            String   @unique
+  voice              Voice    @relation(fields: [voiceId], references: [id], onDelete: Cascade)
+  generationCount    Int      @default(0)
+  previewCount       Int      @default(0)
+  totalCalls         Int      @default(0)
+  totalMinutes       Float    @default(0)
+  failures           Int      @default(0)
+  averageLatencyMs   Int      @default(0)
+  averageQuality     Float    @default(0)
+  updatedAt          DateTime @updatedAt
+}
+
+model VoiceBenchmark {
+  id                      String   @id @default(uuid())
+  voiceId                 String
+  voice                   Voice    @relation(fields: [voiceId], references: [id], onDelete: Cascade)
+  versionId               String?
+  validationScore         Float?
+  speechQualityScore      Float?
+  transcriptionConfidence Float?
+  snr                     Float?
+  processingTimeMs        Int?
+  cloneTimeMs             Int?
+  totalPipelineTimeMs     Int?
+  sampleRate              Int?
+  durationSeconds         Float?
+  speechRate              Float?
+  
+  // Future subjective scores
+  similarityScore         Float?
+  naturalnessScore        Float?
+  pronunciationScore      Float?
+  stabilityScore          Float?
+  overallScore            Float?
+  
+  reportUrl               String?
+  createdAt               DateTime @default(now())
+}
+
+// ---------------------------
+// AI-OS EXPANSION MODELS
+// ---------------------------
+
+model Task {
+  id          String   @id @default(uuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  businessId  String
+  
+  title       String
+  description String?
+  status      String   @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, BLOCKED
+  priority    String   @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  requiresApproval Boolean @default(false)
+  approvalStatus String? // null, APPROVED, REJECTED
+  
+  dueDate     DateTime?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Notification {
+  id               String   @id @default(uuid())
+  businessId       String
+  business         Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sourceEmployeeId String?  
+  
+  title            String
+  message          String
+  type             String   @default("INFO") // INFO, WARNING, ACTION_REQUIRED, SUCCESS
+  isRead           Boolean  @default(false)
+  actionUrl        String?
+  
+  createdAt        DateTime @default(now())
+}
+
+model BusinessPlan {
+  id         String   @id @default(uuid())
+  businessId String   @unique
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  
+  content    Json     
+  status     String   @default("DRAFT")
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model GamificationProfile {
+  id                String   @id @default(uuid())
+  employeeId        String   @unique
+  employee          Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  xp                Int      @default(0)
+  level             Int      @default(1)
+  productivityScore Int      @default(100)
+  achievements      String[]
+  
+  updatedAt         DateTime @updatedAt
+}
+
+model Meeting {
+  id         String   @id @default(uuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  
+  topic      String
+  status     String   @default("SCHEDULED") // SCHEDULED, IN_PROGRESS, COMPLETED
+  summary    String?
+  
+  transcripts MeetingTranscript[]
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model MeetingTranscript {
+  id         String   @id @default(uuid())
+  meetingId  String
+  meeting    Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  
+  speaker    String   // "Founder" or Employee ID
+  content    String
+  
+  createdAt  DateTime @default(now())
+}
+
+model BusinessTimelineEvent {
+  id         String   @id @default(uuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  
+  type       String   // TASK_EVENT, KNOWLEDGE_EVENT, EMPLOYEE_EVENT, CHANNEL_EVENT
+  title      String
+  description String?
+  metadata   Json?
+  
+  createdAt  DateTime @default(now())
+}
+
+// -----------------------------------------
+// MARKETING OPERATIONS SYSTEM
+// -----------------------------------------
+
+model MarketingCampaign {
+  id              String   @id @default(uuid())
+  businessId      String
+  templateId      String?
+  name            String
+  brief           String?
+  objectives      String?
+  audience        String?
+  budget          String?
+  timeline        String?
+  status          String   @default("DRAFT")
+  isRecurring     Boolean  @default(false)
+  recurringCron   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  business        Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  template        MarketingTemplate? @relation(fields: [templateId], references: [id])
+  tasks           MarketingTask[]
+  phases          MarketingCampaignPhase[]
+  versions        MarketingCampaignVersion[]
+  approvalHistory MarketingApprovalHistory[]
+}
+
+model MarketingCampaignVersion {
+  id              String   @id @default(uuid())
+  campaignId      String
+  versionNumber   Int
+  snapshot        Json
+  createdAt       DateTime @default(now())
+  
+  campaign        MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+}
+
+model MarketingCampaignPhase {
+  id              String   @id @default(uuid())
+  campaignId      String
+  name            String
+  orderIndex      Int
+  status          String   @default("PENDING")
+  
+  campaign        MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  tasks           MarketingTask[]
+}
+
+model MarketingTemplate {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  structure       Json
+  createdAt       DateTime @default(now())
+  
+  campaigns       MarketingCampaign[]
+}
+
+model MarketingTask {
+  id                String   @id @default(uuid())
+  campaignId        String
+  phaseId           String?
+  
+  platform          String
+  platformFormat    String?
+  connectedAccount  String?
+  deliverable       String
+  priority          String   @default("MEDIUM")
+  
+  scheduledAt       DateTime?
+  timezone          String?
+  
+  caption           String?
+  cta               String?
+  hashtags          String[]
+  mediaAssets       String[]
+  targetAudience    String?
+  
+  approvalStatus    String   @default("PENDING")
+  publishingStatus  String   @default("DRAFT")
+  analyticsStatus   String   @default("PENDING")
+  retryCount        Int      @default(0)
+  
+  assignedAISpecialist String?
+  comments          String?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  campaign          MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  phase             MarketingCampaignPhase? @relation(fields: [phaseId], references: [id])
+  
+  executionHistory  MarketingExecutionHistory[]
+  dependencies      TaskDependency[] @relation("DependentTasks")
+  prerequisites     TaskDependency[] @relation("PrerequisiteTasks")
+  approvalHistory   MarketingApprovalHistory[]
+  analyticsSnapshots MarketingAnalyticsSnapshot[]
+}
+
+model TaskDependency {
+  id                String   @id @default(uuid())
+  taskId            String
+  dependsOnTaskId   String
+  type              String   @default("BLOCKS")
+  
+  task              MarketingTask @relation("DependentTasks", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOnTask     MarketingTask @relation("PrerequisiteTasks", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+}
+
+model MarketingExecutionHistory {
+  id                String   @id @default(uuid())
+  taskId            String
+  action            String
+  status            String
+  logs              String?
+  createdAt         DateTime @default(now())
+  
+  task              MarketingTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model MarketingApprovalHistory {
+  id                String   @id @default(uuid())
+  taskId            String?
+  campaignId        String?
+  action            String   // APPROVED, REJECTED, REVISION_REQUESTED
+  reviewer          String   // e.g. "Founder", "Brand Strategist"
+  comments          String?
+  createdAt         DateTime @default(now())
+  
+  task              MarketingTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  campaign          MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+}
+
+model MarketingAnalyticsSnapshot {
+  id                String   @id @default(uuid())
+  taskId            String
+  reach             Int      @default(0)
+  clicks            Int      @default(0)
+  engagement        Int      @default(0)
+  conversions       Int      @default(0)
+  roi               Float    @default(0.0)
+  snapshotDate      DateTime @default(now())
+  rawMetrics        Json?
+  
+  task              MarketingTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
