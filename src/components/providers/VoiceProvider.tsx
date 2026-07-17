@@ -8,7 +8,7 @@ export type VoiceState = 'idle' | 'connecting' | 'listening' | 'thinking' | 'spe
 
 interface VoiceContextProps {
   voiceState: VoiceState;
-  startCall: (employeeId: string, employeeName: string, employeeRole: string) => void;
+  startCall: (employeeId: string, employeeName: string, employeeRole: string, skipGreeting?: boolean) => void;
   endCall: () => void;
   isMuted: boolean;
   toggleMute: () => void;
@@ -290,7 +290,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     synthRef.current.speak(utterance);
   };
 
-  const startCall = (employeeId: string, employeeName: string, employeeRole: string) => {
+  const startCall = (employeeId: string, employeeName: string, employeeRole: string, skipGreeting: boolean = false) => {
     setActiveEmployeeId(employeeId);
     setActiveEmployeeName(employeeName);
     setActiveEmployeeRole(employeeRole);
@@ -312,6 +312,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
       })
       .catch(() => {});
+
+    if (skipGreeting) {
+       setVoiceState('thinking');
+       return;
+    }
 
     setTimeout(async () => {
       setVoiceState('thinking');

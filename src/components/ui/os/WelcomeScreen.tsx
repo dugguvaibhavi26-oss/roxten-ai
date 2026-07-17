@@ -47,7 +47,11 @@ export function WelcomeScreen() {
 
   const speakBriefing = async () => {
     setHasStartedJarvis(true);
-    simulateAIResponse(briefing?.spokenScript || "Good morning. I am finalizing the briefing.");
+    // Explicitly set the VoiceContext to JARVIS without triggering the initial 'greeting' API call.
+    startCall('jarvis', 'JARVIS', 'System Intelligence', true);
+    setTimeout(() => {
+        simulateAIResponse(briefing?.spokenScript || "Good morning. I am finalizing the briefing.");
+    }, 100);
   };
 
   const handleSkip = () => {
