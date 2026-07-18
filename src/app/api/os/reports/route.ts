@@ -10,9 +10,15 @@ export async function GET() {
     const business = await prisma.business.findUnique({ where: { id: businessId } });
     if (!business) return NextResponse.json({ error: 'No business configured' }, { status: 404 });
 
-    const reports = await prisma.businessReport.findMany({
-      where: { businessId: business.id },
-      orderBy: { createdAt: 'desc' }
+    const rawReports = await prisma.businessReport.findMany({
+      where: { businessId: business.id }
+    });
+
+    // Sort in memory to avoid missing Firestore composite index error
+    const reports = rawReports.sort((a: any, b: any) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateB - dateA; // descending
     });
 
     return NextResponse.json({ success: true, data: reports });

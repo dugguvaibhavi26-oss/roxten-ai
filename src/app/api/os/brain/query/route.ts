@@ -16,12 +16,17 @@ export async function POST(req: Request) {
 
     // Intelligent Search: Retrieve prioritized knowledge instead of dumping everything
     // We'll prioritize businessKnowledge (policies/sops), DNA, and recent active tasks
-    const [knowledge, dnaRec, tasks, insights] = await Promise.all([
-      prisma.businessKnowledge.findMany({ where: { businessId }, take: 40, orderBy: { createdAt: 'desc' } }),
+    const [rawKnowledge, dnaRec, rawTasks, rawInsights] = await Promise.all([
+      prisma.businessKnowledge.findMany({ where: { businessId } }),
       prisma.memory.findFirst({ where: { businessId, key: 'COMPANY_DNA' } }),
-      prisma.task.findMany({ where: { businessId, status: { in: ['PENDING', 'IN_PROGRESS'] } }, take: 20, include: { employee: true }, orderBy: { createdAt: 'desc' } }),
-      prisma.businessInsight.findMany({ where: { businessId }, take: 10, orderBy: { createdAt: 'desc' } })
+      prisma.task.findMany({ where: { businessId, status: { in: ['PENDING', 'IN_PROGRESS'] } }, include: { employee: true } }),
+      prisma.businessInsight.findMany({ where: { businessId } })
     ]);
+
+    // Sort in memory to avoid missing Firestore composite index errors
+    const knowledge = rawKnowledge.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, 40);
+    const tasks = rawTasks.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, 20);
+    const insights = rawInsights.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, 10);
 
     let dnaString = 'No Company DNA defined.';
     if (dnaRec) {

@@ -57,11 +57,13 @@ export class CommunicationService {
 
   static async markThreadAsRead(threadId: string) {
     const activity = await prisma.activity.findUnique({
-      where: { id: threadId },
-      include: { ActivityEvent: true }
+      where: { id: threadId }
     });
     
     if (!activity) return;
+
+    const events = await prisma.activityEvent.findMany({ where: { activityId: threadId } });
+    activity.ActivityEvent = events;
 
     // In a real database with schemas we'd do a batch update.
     // For this firebase adapter, we'll individually update events that are 'DELIVERED'.
@@ -80,11 +82,13 @@ export class CommunicationService {
   static async generateAiReply(businessId: string, threadId: string, employeeId: string) {
     // 1. Fetch History
     const activity = await prisma.activity.findUnique({
-      where: { id: threadId },
-      include: { ActivityEvent: { orderBy: { createdAt: 'asc' } } }
+      where: { id: threadId }
     });
 
     if (!activity) throw new Error('Thread not found');
+
+    const rawEvents = await prisma.activityEvent.findMany({ where: { activityId: threadId } });
+    activity.ActivityEvent = rawEvents.sort((a: any, b: any) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
 
     const history = activity.ActivityEvent.map((e: any) => `${e.actor}: ${e.content}`).join('\n');
 

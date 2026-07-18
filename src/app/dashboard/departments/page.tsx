@@ -7,18 +7,59 @@ import Link from 'next/link';
 
 export default function DepartmentsPage() {
   const [departments, setDepartments] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [newDeptName, setNewDeptName] = useState('');
+  const [newDeptDesc, setNewDeptDesc] = useState('');
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const loadData = () => {
+    Promise.all([
+      fetch('/api/os/departments').then(r => r.json()),
+      fetch('/api/os/workforce/employee').then(r => r.json())
+    ]).then(([deptData, empData]) => {
+      if (deptData.success) setDepartments(deptData.data);
+      if (empData.success) setEmployees(empData.employees);
+      setLoading(false);
+    });
+  };
 
   useEffect(() => {
-    fetch('/api/os/departments')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          setDepartments(data.data);
-        }
-        setLoading(false);
-      });
+    loadData();
   }, []);
+
+  const handleCreateDepartment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDeptName) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('/api/os/departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name: newDeptName, 
+          description: newDeptDesc,
+          employeeIds: selectedEmployees
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowModal(false);
+        setNewDeptName('');
+        setNewDeptDesc('');
+        setSelectedEmployees([]);
+        loadData();
+      } else {
+        alert(data.error || 'Failed to create department');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('An error occurred');
+    }
+    setIsSubmitting(false);
+  };
 
   if (loading) {
     return (
@@ -41,7 +82,10 @@ export default function DepartmentsPage() {
           </h1>
           <p className="text-gray-500 text-base font-medium">Organizational units and their deployed AI workforce.</p>
         </div>
-        <button className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-gray-900 rounded-xl transition-colors font-bold shadow-sm">
+        <button 
+          onClick={() => setShowModal(true)}
+          className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-gray-900 rounded-xl transition-colors font-bold shadow-sm"
+        >
           <Plus className="w-4 h-4" />
           New Department
         </button>
@@ -133,6 +177,92 @@ export default function DepartmentsPage() {
           )}
         </AnimatePresence>
       </div>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl border border-gray-100"
+          >
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Create Department</h2>
+            <p className="text-gray-500 mb-6 text-sm">Establish a new organizational unit.</p>
+            <form onSubmit={handleCreateDepartment} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-widest mb-2">Department Name</label>
+                <input 
+                  type="text" 
+                  value={newDeptName}
+                  onChange={(e) => setNewDeptName(e.target.value)}
+                  placeholder="e.g. Engineering, Sales, HR"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-widest mb-2">Description (Optional)</label>
+                <input 
+                  type="text" 
+                  value={newDeptDesc}
+                  onChange={(e) => setNewDeptDesc(e.target.value)}
+                  placeholder="Brief summary of department goals"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-widest mb-2">Assign Employees</label>
+                <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-xl bg-gray-50 p-2 space-y-1 custom-scrollbar">
+                  {employees.filter(e => !e.departmentId).length === 0 ? (
+                    <p className="text-xs text-gray-500 italic p-3 text-center">No unassigned employees available.</p>
+                  ) : (
+                    employees.filter(e => !e.departmentId).map(emp => (
+                      <label key={emp.id} className="flex items-center gap-3 p-2 hover:bg-white rounded-lg cursor-pointer transition-colors border border-transparent hover:border-gray-200">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedEmployees.includes(emp.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedEmployees([...selectedEmployees, emp.id]);
+                            else setSelectedEmployees(selectedEmployees.filter(id => id !== emp.id));
+                          }}
+                          className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                        />
+                        <div className="flex items-center gap-2">
+                           <div className="w-6 h-6 rounded bg-white border border-gray-200 flex items-center justify-center text-xs font-bold">{emp.name.charAt(0)}</div>
+                           <span className="text-sm font-semibold text-gray-900">{emp.name}</span>
+                           <span className="text-[10px] text-gray-500 uppercase font-bold">{emp.role}</span>
+                        </div>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button 
+                  type="button" 
+                  onClick={() => setShowModal(false)}
+                  className="flex-1 px-4 py-3 text-gray-500 font-bold hover:bg-gray-50 rounded-xl transition-colors border border-transparent hover:border-gray-200"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSubmitting}
+                  className="flex-1 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-gray-900 font-bold rounded-xl transition-colors shadow-sm disabled:opacity-50 flex justify-center items-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+                      Creating...
+                    </>
+                  ) : 'Create'}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

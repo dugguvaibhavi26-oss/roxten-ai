@@ -11,13 +11,21 @@ export async function GET() {
     const business = await prisma.business.findUnique({ where: { id: businessId } });
     if (!business) return NextResponse.json({ error: 'Business not found' }, { status: 404 });
 
-    const activities = await prisma.activity.findMany({
-      where: { businessId: business.id, source: 'communication' },
-      include: {
-        ActivityEvent: { orderBy: { createdAt: 'asc' } }
-      },
-      orderBy: { createdAt: 'desc' }
+    const rawActivities = await prisma.activity.findMany({
+      where: { businessId: business.id, source: 'communication' }
     });
+
+    const activities = await Promise.all(rawActivities.map(async (act: any) => {
+      const events = await prisma.activityEvent.findMany({
+        where: { activityId: act.id }
+      });
+      return {
+        ...act,
+        ActivityEvent: (events || []).sort((a: any, b: any) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
+      };
+    }));
+
+    activities.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
     return NextResponse.json(activities);
   } catch (error: any) {

@@ -403,8 +403,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
        handleSpeechEnd();
     };
 
-    utterance.onerror = (e) => {
-       console.error("SpeechSynthesis error:", e);
+    utterance.onerror = (e: any) => {
+       if (e.error !== 'interrupted' && e.error !== 'canceled') {
+           console.warn("SpeechSynthesis error:", e.error || e);
+       }
        if (isHandled) return;
        isHandled = true;
        handleSpeechEnd();

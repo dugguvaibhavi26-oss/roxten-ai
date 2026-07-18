@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, X, Briefcase, Users, BrainCircuit, Activity, LayoutDashboard, Building2, UserPlus, PlayCircle, Settings } from 'lucide-react';
+import { Search, X, Briefcase, Users, BrainCircuit, Activity, LayoutDashboard, Building2, UserPlus, PlayCircle, Settings, Monitor } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 type Command = {
@@ -41,6 +41,7 @@ export function CommandPalette() {
     { id: '4', title: 'Company Brain', icon: <BrainCircuit className="w-4 h-4 text-emerald-400" />, category: 'Navigation', action: () => router.push('/dashboard/brain') },
     { id: '5', title: 'Boardroom Meetings', icon: <Briefcase className="w-4 h-4 text-rose-400" />, category: 'Navigation', action: () => router.push('/dashboard/meetings') },
     { id: '6', title: 'Internal Network', icon: <Building2 className="w-4 h-4 text-orange-400" />, category: 'Navigation', action: () => router.push('/dashboard/communication') },
+    { id: '10', title: 'Website Studio', icon: <Monitor className="w-4 h-4 text-pink-400" />, category: 'Navigation', action: () => router.push('/dashboard/website-studio') },
     
     { id: '7', title: 'Hire New Employee', icon: <UserPlus className="w-4 h-4 text-blue-400" />, category: 'Actions', action: () => router.push('/dashboard/workforce/marketplace') },
     { id: '8', title: 'Start a Meeting', icon: <PlayCircle className="w-4 h-4 text-rose-400" />, category: 'Actions', action: () => router.push('/dashboard/meetings') },

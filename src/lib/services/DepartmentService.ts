@@ -6,12 +6,18 @@ export class DepartmentService {
    * Aggregates employees and task metrics efficiently.
    */
   static async getDepartmentsOverview(businessId: string) {
-    const [departments, allEmployees, activeTasks, completedTasks] = await Promise.all([
-      prisma.department.findMany({ where: { businessId }, orderBy: { createdAt: 'desc' } }),
+    const [rawDepartments, allEmployees, activeTasks, completedTasks] = await Promise.all([
+      prisma.department.findMany({ where: { businessId } }),
       prisma.employee.findMany({ where: { businessId, isDeployed: true } }),
       prisma.task.findMany({ where: { businessId, status: { in: ['PENDING', 'IN_PROGRESS'] } } }),
       prisma.task.findMany({ where: { businessId, status: 'COMPLETED' } })
     ]);
+
+    const departments = rawDepartments.sort((a: any, b: any) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
 
     return departments.map((dept: any) => {
       const deptEmployees = allEmployees.filter((e: any) => e.departmentId === dept.id);

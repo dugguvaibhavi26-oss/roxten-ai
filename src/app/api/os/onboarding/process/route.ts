@@ -100,19 +100,7 @@ Return ONLY valid JSON matching this schema:
       }
     }
 
-    // 2. Create Departments
-    const deptPromises = parsedData.orgChart
-      .filter((emp: any) => emp.type === 'department')
-      .map((emp: any) => 
-        prisma.department.create({ 
-          data: { 
-            name: emp.role.replace(' AI', ''), 
-            businessId: business.id 
-          } 
-        })
-      );
-    
-    await Promise.all(deptPromises);
+    // 2. Create Departments (Removed: Departments are now created manually by the user)
 
     // 3. Create Insights
     if (parsedData.insights && parsedData.insights.length > 0) {

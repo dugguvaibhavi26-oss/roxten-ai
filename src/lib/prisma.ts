@@ -226,6 +226,10 @@ const prismaBase: Record<string, FirestoreAdapter> = {
   voice: new FirestoreAdapter('voiceProfiles'),
   employeeTemplate: new FirestoreAdapter('employeeTemplates'),
   testingSession: new FirestoreAdapter('testingSessions'),
+  website: new FirestoreAdapter('websites'),
+  websiteTemplate: new FirestoreAdapter('websiteTemplates'),
+  websiteSection: new FirestoreAdapter('websiteSections'),
+  customProject: new FirestoreAdapter('customProjects'),
 };
 
 const prisma: any = new Proxy(prismaBase, {

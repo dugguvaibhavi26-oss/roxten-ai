@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { 
   Home, Users, Brain, MessageSquare, Presentation, Calendar, 
   Settings as SettingsIcon, Workflow, Layout, Activity, FolderOpen,
-  Mic, Briefcase, Zap, Search, Bell, Target, Globe, Video, LogOut
+  Mic, Briefcase, Zap, Search, Bell, Target, Globe, Video, LogOut, Monitor
 } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 
@@ -63,6 +63,7 @@ export function Sidebar() {
   ];
 
   const operationsNav = [
+    { name: 'Website Studio', href: '/dashboard/website-studio', icon: Monitor },
     { name: 'Marketing', href: '/dashboard/marketing', icon: Globe },
     { name: 'Automation', href: '/dashboard/automation', icon: Workflow },
     { name: 'Voice Studio', href: '/dashboard/voice', icon: Mic },
