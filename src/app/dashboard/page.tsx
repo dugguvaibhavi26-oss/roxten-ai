@@ -88,6 +88,27 @@ export default function CEODesk() {
       { msg: 'Execution pipeline initialized.', status: 'done' }
     ]);
 
+    // Fetch dynamic response from JARVIS based on user input
+    try {
+      const res = await fetch('/api/os/brain/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input })
+      });
+      const data = await res.json();
+      
+      startCall('jarvis', 'JARVIS', 'Executive AI');
+      setTimeout(() => {
+        simulateAIResponse(data.reply);
+      }, 800);
+    } catch (e) {
+      console.error('Dispatch voice error:', e);
+      startCall('jarvis', 'JARVIS', 'Executive AI');
+      setTimeout(() => {
+        simulateAIResponse(`Right away, sir. I have processed your input: ${input}`);
+      }, 800);
+    }
+
     await new Promise(r => setTimeout(r, 800));
     
     setInput('');

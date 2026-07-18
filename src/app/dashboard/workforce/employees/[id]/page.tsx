@@ -5,10 +5,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   BrainCircuit, Mic, PhoneOff,
   BookOpen, Clock, Zap, Target, History, Users, Activity,
-  Save, CheckCircle2, AlertCircle, Edit2
+  Save, CheckCircle2, AlertCircle, Edit2, Plus
 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useVoice } from '@/components/providers/VoiceProvider';
+import { MOCK_INTEGRATIONS } from '@/lib/mock/integrations/data';
 
 export default function EmployeeOffice() {
   const params = useParams();
@@ -19,6 +20,9 @@ export default function EmployeeOffice() {
   const [coworkers, setCoworkers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('brain');
+  
+  const [agentApps, setAgentApps] = useState<any[]>([]);
+  const [showAppSelector, setShowAppSelector] = useState(false);
 
   // Edit State
   const [isEditing, setIsEditing] = useState(false);
@@ -45,6 +49,10 @@ export default function EmployeeOffice() {
           setActivities(data.activities || []);
           setKnowledge(data.knowledge || []);
           setCoworkers(data.coworkers || []);
+          
+          // Load agent integrations from local storage or set empty
+          const savedAgentApps = localStorage.getItem(`agent_apps_${params.id}`);
+          if (savedAgentApps) setAgentApps(JSON.parse(savedAgentApps));
         }
         setLoading(false);
       });
@@ -191,6 +199,7 @@ export default function EmployeeOffice() {
               { id: 'desk', label: 'Active Desk', icon: Clock },
               { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
               { id: 'relationships', label: 'Coworkers', icon: Users },
+              { id: 'integrations', label: 'App Integrations', icon: Zap },
             ].map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -465,6 +474,106 @@ export default function EmployeeOffice() {
                     <Users className="w-16 h-16 text-gray-600 mb-4" />
                     <p className="text-gray-300 text-lg mb-2">No coworkers found.</p>
                     <p className="text-gray-500 max-w-md">This agent is currently the only one assigned to the {employee.department?.name} department.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* INTEGRATIONS TAB */}
+            {activeTab === 'integrations' && (
+              <div className="max-w-4xl pb-20 relative">
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                      <Zap className="w-6 h-6 text-indigo-400" /> App Integrations
+                    </h2>
+                    <p className="text-gray-400">Connect {employee.name} to external applications.</p>
+                  </div>
+                  <button 
+                    onClick={() => setShowAppSelector(true)}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" /> Add Connection
+                  </button>
+                </div>
+                
+                {agentApps.length === 0 ? (
+                  <div className="bg-white/5 border border-white/10 rounded-3xl p-12 backdrop-blur-md flex flex-col items-center justify-center text-center">
+                    <Zap className="w-12 h-12 text-gray-600 mb-4" />
+                    <p className="text-gray-300 text-lg mb-2">No apps connected.</p>
+                    <p className="text-gray-500 max-w-md">Give this agent superpowers by linking external tools like Slack, Gmail, or Stripe.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {agentApps.map(app => (
+                      <div key={app.id} className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-md flex flex-col gap-4 group hover:bg-white/10 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shrink-0">
+                            {app.logoUrl ? <img src={app.logoUrl} alt={app.name} className="w-7 h-7 object-contain" /> : <Zap className="w-6 h-6 text-gray-400" />}
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-white text-lg">{app.name}</h3>
+                            <span className="text-xs font-bold px-2 py-1 bg-emerald-900/50 text-emerald-400 border border-emerald-500/20 rounded-md uppercase tracking-wider">Active</span>
+                          </div>
+                        </div>
+                        <p className="text-sm text-gray-400 flex-1">{app.description}</p>
+                        <button 
+                          onClick={() => {
+                            const newApps = agentApps.filter(a => a.id !== app.id);
+                            setAgentApps(newApps);
+                            localStorage.setItem(`agent_apps_${params.id}`, JSON.stringify(newApps));
+                          }}
+                          className="w-full py-2 bg-red-600/10 hover:bg-red-600/30 border border-red-500/20 text-red-400 font-bold rounded-xl transition-colors text-sm mt-2"
+                        >
+                          Remove Access
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* App Selector Modal */}
+                {showAppSelector && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="bg-gray-900 border border-white/10 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[80vh]"
+                    >
+                      <div className="p-6 border-b border-white/10 flex items-center justify-between bg-gray-900/50">
+                        <h3 className="text-xl font-bold text-white">Select App to Connect</h3>
+                        <button onClick={() => setShowAppSelector(false)} className="p-2 text-gray-400 hover:text-white rounded-full transition-colors">×</button>
+                      </div>
+                      <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+                        <div className="grid grid-cols-1 gap-3">
+                          {MOCK_INTEGRATIONS.map(integration => {
+                            const isConnected = agentApps.some(a => a.id === integration.id);
+                            return (
+                              <button 
+                                key={integration.id}
+                                disabled={isConnected}
+                                onClick={() => {
+                                  const newApps = [...agentApps, integration];
+                                  setAgentApps(newApps);
+                                  localStorage.setItem(`agent_apps_${params.id}`, JSON.stringify(newApps));
+                                  setShowAppSelector(false);
+                                }}
+                                className={`flex items-center gap-4 p-4 rounded-2xl border transition-all text-left ${isConnected ? 'bg-white/5 border-white/5 opacity-50 cursor-not-allowed' : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-indigo-500/50 cursor-pointer'}`}
+                              >
+                                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shrink-0">
+                                  {integration.logoUrl ? <img src={integration.logoUrl} alt={integration.name} className="w-6 h-6 object-contain" /> : <Zap className="w-5 h-5 text-gray-400" />}
+                                </div>
+                                <div className="flex-1">
+                                  <h4 className="font-bold text-white">{integration.name}</h4>
+                                  <p className="text-xs text-gray-400 line-clamp-1">{integration.description}</p>
+                                </div>
+                                {isConnected && <span className="text-xs font-bold text-emerald-400 bg-emerald-900/30 px-2 py-1 rounded-md">Connected</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </motion.div>
                   </div>
                 )}
               </div>

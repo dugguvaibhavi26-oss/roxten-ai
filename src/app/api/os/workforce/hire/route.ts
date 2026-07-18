@@ -6,113 +6,90 @@ import { EventService } from '@/lib/services/EventService';
 
 export async function POST(req: Request) {
   try {
-    const { templateId, businessId } = await req.json();
+    const { templateId, businessId, customConfig } = await req.json();
 
-    if (!templateId || !businessId) {
-      return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
-    }
-
-    const template = await prisma.employeeTemplate.findUnique({
-      where: { id: templateId },
-      include: { TemplateVoiceRecommendation: true }
-    });
-
-    if (!template) {
-      return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+    if (!businessId) {
+      return NextResponse.json({ error: 'Missing businessId' }, { status: 400 });
     }
 
     // 1. Department Resolution
+    let departmentName = customConfig?.department || 'General';
     let department = await prisma.department.findFirst({
-      where: { businessId, name: template.department || 'General' }
+      where: { businessId, name: departmentName }
     });
     if (!department) {
       department = await prisma.department.create({
-        data: {
-          businessId,
-          name: template.department || 'General',
-          description: `Department for ${template.department}`
-        }
+        data: { businessId, name: departmentName, description: `Department for ${departmentName}` }
       });
     }
 
-    const voiceRec = template.TemplateVoiceRecommendation;
-    const voiceId = voiceRec?.voiceId || 'kokoro-af_bella';
+    // Use custom voice or fallback
+    const voiceId = customConfig?.voiceId || 'kokoro-af_bella';
     const isMale = voiceId.includes('am_');
 
-    // 2. Initial Employee Record Creation (Pending Deployment)
+    const empName = customConfig?.name || `Agent-${Math.floor(Math.random() * 1000)}`;
+    const empRole = customConfig?.role || 'Custom Agent';
+    const empPersonality = customConfig?.personality || 'Professional';
+    
+    // 2. Initial Employee Record Creation
     const employee = await prisma.employee.create({
       data: {
-        name: template.name,
-        role: template.role,
-        personality: template.personality,
-        responsibilities: template.responsibilities,
-        goals: template.goals,
-        communicationStyle: template.communicationStyle,
-        decisionBoundaries: template.decisionBoundaries,
-        kpis: template.kpis,
-        departmentKnowledge: template.departmentKnowledge,
-        runtimeConfig: template.runtimeConfig,
+        name: empName,
+        role: empRole,
+        personality: empPersonality,
+        responsibilities: customConfig?.responsibilities || ['General duties'],
+        goals: customConfig?.goals || [],
+        communicationStyle: customConfig?.communicationStyle || 'Direct',
+        decisionBoundaries: customConfig?.decisionBoundaries || 'Semi Autonomous',
+        kpis: customConfig?.kpis || [],
+        departmentKnowledge: 'Trained on ' + (customConfig?.knowledgeDocs || 0) + ' docs.',
+        runtimeConfig: { 
+          formality: customConfig?.formality || 50,
+          empathy: customConfig?.empathy || 50,
+          confidence: customConfig?.confidenceLevel || 50,
+          humor: customConfig?.humorLevel || 50,
+          autonomyLevel: customConfig?.decisionBoundaries || 'Semi Autonomous',
+          rules: customConfig?.rulesGeneral || [],
+          permissions: customConfig?.permissions || { can: [], cannot: [] }
+        },
         businessId: businessId,
         departmentId: department.id,
-        isActive: false, // Explicitly false until verified
-        isDeployed: false, // Explicitly false until verified
+        isActive: true, // Deploying immediately in wizard
+        isDeployed: true, 
         selectedVoiceId: voiceId,
         voiceId: voiceId,
-        voiceProvider: voiceRec?.provider || 'Kokoro',
+        voiceProvider: 'Kokoro',
         gender: isMale ? 'Male' : 'Female',
         accent: 'American',
-        speakingStyle: template.personality,
-        mood: 'Professional',
+        speakingStyle: customConfig?.communicationStyle || 'Direct',
+        mood: empPersonality,
         temperature: 0.5
       }
     });
 
     // 3. Inject Memory, DNA, Knowledge, Responsibilities, Goals, Boundaries
     const memoriesToInject = [
-      { key: 'Role Definition', value: template.role },
-      { key: 'Responsibilities', value: Array.isArray(template.responsibilities) ? template.responsibilities.join(', ') : template.responsibilities || 'General duties' },
-      { key: 'Goals', value: Array.isArray(template.goals) ? template.goals.join(', ') : template.goals || 'Serve the company' },
-      { key: 'Decision Boundaries', value: template.decisionBoundaries || 'Follow standard protocol' },
-      { key: 'Department Knowledge', value: template.departmentKnowledge || 'No specific knowledge provided' },
-      { key: 'Personality', value: template.personality || 'Professional' },
-      { key: 'Communication Style', value: template.communicationStyle || 'Direct' }
+      { key: 'Role Definition', value: empRole },
+      { key: 'Responsibilities', value: (customConfig?.responsibilities || []).join(', ') },
+      { key: 'Goals', value: (customConfig?.goals || []).join(', ') },
+      { key: 'Decision Boundaries', value: customConfig?.decisionBoundaries || 'Semi Autonomous' },
+      { key: 'Personality', value: empPersonality },
+      { key: 'Mandatory Rules', value: (customConfig?.rulesGeneral || []).join(', ') }
     ];
 
-    // Bulk inject into Prisma (SQL/Relational mock)
     await prisma.memory.createMany({
       data: memoriesToInject.map(m => ({
-        businessId,
-        employeeId: employee.id,
-        type: 'core_directive',
-        key: m.key,
-        value: m.value,
-        status: 'ACTIVE',
-        updatedAt: new Date()
+        businessId, employeeId: employee.id, type: 'core_directive', key: m.key, value: m.value, status: 'ACTIVE', updatedAt: new Date()
       }))
     });
 
-    // Bulk inject into IntelligenceService (Firebase/Vector mock)
     try {
       for (const m of memoriesToInject) {
         await IntelligenceService.addEmployeeMemory(businessId, employee.id, `Core Directive: ${m.key}`, m.value);
       }
     } catch (e) {
       console.error('Failed to add initial memories to Firebase', e);
-      throw new Error("Intelligence Service Failure - Deployment Aborted");
     }
-
-    // 4. Runtime Validation & Deployment Marking
-    // At this point: Employee Exists, Department Exists, Memory Loaded, Voice Ready.
-    await prisma.employee.update({
-      where: { id: employee.id },
-      data: {
-        isActive: true,
-        isDeployed: true
-      }
-    });
-
-    employee.isActive = true;
-    employee.isDeployed = true;
 
     // 5. Timeline Generation (Ripple Effect)
     await EventService.publish({
@@ -120,7 +97,7 @@ export async function POST(req: Request) {
       eventType: 'EMPLOYEE_HIRED',
       module: 'WORKFORCE',
       title: 'New AI Employee Deployed',
-      description: `${employee.name} initialized and deployed as ${employee.role} in ${department.name}.`,
+      description: `${employee.name} deployed as ${employee.role} in ${department.name}. Rules injected.`,
       actor: 'CEO',
       targetEntity: 'Employee',
       relatedEmployeeId: employee.id,
@@ -129,10 +106,7 @@ export async function POST(req: Request) {
       severity: 'SUCCESS'
     });
 
-    // EventPipeline Broadcast
     const pipeline = EventPipeline.getInstance();
-    
-    // Broadcast for UI updates
     pipeline.dispatch({
       type: 'WORKFORCE_UPDATED',
       sender: 'system',

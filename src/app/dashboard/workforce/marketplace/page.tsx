@@ -1,343 +1,705 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, Mic, Video, X, ChevronRight } from 'lucide-react';
+import { 
+  Users, UserPlus, Brain, BookOpen, CheckCircle, Shield, 
+  Mic, Zap, FileText, Upload, Sliders, Play, Plus, X, Server, LayoutDashboard, Database, ArrowRight, AlertCircle
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-const INTERVIEW_PHASES = [
-  'Introduction',
-  'Experience',
-  'Working Philosophy',
-  'Strengths',
-  'Weaknesses',
-  'Scenario Questions',
-  'Ask Anything',
-  'Recommendation'
+interface HiringConfig {
+  templateId: string;
+  name: string;
+  role: string;
+  department: string;
+  tagline: string;
+  
+  personality: string;
+  communicationStyle: string;
+  humorLevel: number;
+  confidenceLevel: number;
+  formality: number;
+  empathy: number;
+
+  knowledgeDocs: number;
+  knowledgeUrls: number;
+
+  responsibilities: string[];
+  goals: string[];
+  kpis: string[];
+
+  rulesGeneral: string[];
+  permissions: { can: string[]; cannot: string[] };
+  decisionBoundaries: string;
+  behaviorRules: { condition: string; action: string }[];
+
+  voiceId: string;
+  integrations: string[];
+}
+
+const TEMPLATES = [
+  { id: 'sales_exec', name: 'Sales Executive', role: 'Senior Sales Exec', dept: 'Sales', desc: 'Outbound sales and lead generation.', personality: 'Energetic' },
+  { id: 'cs_agent', name: 'Customer Support Agent', role: 'Support Specialist', dept: 'Support', desc: 'Handles tickets and resolves customer issues.', personality: 'Empathetic' },
+  { id: 'marketing_mgr', name: 'Marketing Manager', role: 'Marketing Lead', dept: 'Marketing', desc: 'Campaigns, copy, and brand strategy.', personality: 'Creative' },
+  { id: 'hr_assistant', name: 'HR Assistant', role: 'HR Coordinator', dept: 'Human Resources', desc: 'Onboarding and internal communications.', personality: 'Friendly' },
+  { id: 'finance_analyst', name: 'Finance Analyst', role: 'Financial Analyst', dept: 'Finance', desc: 'Reporting, forecasting, and budgets.', personality: 'Analytical' },
+  { id: 'ops_manager', name: 'Operations Manager', role: 'Operations Lead', dept: 'Operations', desc: 'Process optimization and task management.', personality: 'Professional' },
+  { id: 'exec_assistant', name: 'Executive Assistant', role: 'Executive Assistant', dept: 'General', desc: 'Scheduling, emails, and daily organization.', personality: 'Formal' },
+  { id: 'ceo_advisor', name: 'CEO Advisor', role: 'Strategic Advisor', dept: 'Executive', desc: 'High-level strategy and market analysis.', personality: 'Leadership' },
+  { id: 'custom', name: 'Custom Employee', role: 'Custom Role', dept: 'Custom', desc: 'Build an employee from scratch.', personality: 'Professional' },
 ];
 
-export default function Marketplace() {
-  const [templates, setTemplates] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [interviewing, setInterviewing] = useState<string | null>(null);
-  const [hiring, setHiring] = useState(false);
-  const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+const STEPS = [
+  'Template Selection', 'Employee Identity', 'Personality Engine', 'Knowledge & Training', 
+  'Responsibilities', 'Rules & Boundaries', 'Voice Configuration', 'Integrations', 'Review', 'Build & Deploy'
+];
+
+export default function HiringWizard() {
   const router = useRouter();
+  const [step, setStep] = useState(1);
+  const [deployLogs, setDeployLogs] = useState<string[]>([]);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [deploySuccess, setDeploySuccess] = useState(false);
+  const [createdEmployeeId, setCreatedEmployeeId] = useState<string | null>(null);
 
-  // Interview State
-  const [currentPhaseIndex, setCurrentPhaseIndex] = useState(0);
-  const [chatHistory, setChatHistory] = useState<{role: string, content: string}[]>([]);
-  const [userInput, setUserInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [config, setConfig] = useState<HiringConfig>({
+    templateId: '', name: '', role: '', department: '', tagline: '',
+    personality: 'Professional', communicationStyle: 'Formal',
+    humorLevel: 50, confidenceLevel: 75, formality: 80, empathy: 60,
+    knowledgeDocs: 0, knowledgeUrls: 0,
+    responsibilities: ['Handle customer support', 'Manage CRM'], goals: ['Increase satisfaction'], kpis: ['Response time < 5m'],
+    rulesGeneral: ['Never disclose confidential information', 'Never hallucinate'],
+    permissions: { can: ['Access CRM', 'Send Emails'], cannot: ['Delete Company Data', 'Modify Financial Records'] },
+    decisionBoundaries: 'Semi Autonomous',
+    behaviorRules: [{ condition: 'customer is angry', action: 'Stay calm' }],
+    voiceId: 'kokoro-af_bella',
+    integrations: []
+  });
 
-  useEffect(() => {
-    fetch('/api/os/marketplace')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) setTemplates(data);
-        setLoading(false);
-      })
-      .catch(e => {
-        console.error(e);
-        setLoading(false);
-      });
-  }, []);
+  const nextStep = () => setStep(s => Math.min(s + 1, 10));
+  const prevStep = () => setStep(s => Math.max(s - 1, 1));
+  const updateConfig = (updates: Partial<HiringConfig>) => setConfig(prev => ({ ...prev, ...updates }));
 
-  useEffect(() => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  const startDeployment = async () => {
+    setIsDeploying(true);
+    setDeployLogs([]);
+    
+    const deploymentSteps = [
+      'Initializing Identity...',
+      'Injecting Personality...',
+      'Training Company Knowledge...',
+      'Applying Rules...',
+      'Assigning Voice...',
+      'Connecting Integrations...',
+      'Generating Memory...',
+      'Deploying Runtime...',
+      'Synchronizing Company Brain...'
+    ];
+
+    for (let i = 0; i < deploymentSteps.length; i++) {
+      await new Promise(r => setTimeout(r, 800)); // Cinematic delay
+      setDeployLogs(prev => [...prev, deploymentSteps[i]]);
     }
-  }, [chatHistory, isTyping]);
 
-  const handleHire = async (templateId: string) => {
-    setHiring(true);
-    setNotification(null);
+    // Call API
     try {
-      const galaxyRes = await fetch('/api/os/galaxy?t=' + Date.now());
+      const galaxyRes = await fetch('/api/os/galaxy');
       const galaxy = await galaxyRes.json();
       
       const res = await fetch('/api/os/workforce/hire', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ templateId, businessId: galaxy.id })
+        body: JSON.stringify({ 
+          templateId: config.templateId || 'custom', 
+          businessId: galaxy.id,
+          customConfig: config 
+        })
       });
       
       if (res.ok) {
         const emp = await res.json();
-        setNotification({ type: 'success', message: `Successfully hired ${emp.name}!` });
-        setInterviewing(null);
-        router.push('/dashboard/workforce');
+        setCreatedEmployeeId(emp.id);
+        await new Promise(r => setTimeout(r, 500));
+        setDeployLogs(prev => [...prev, 'Employee Successfully Hired.']);
+        setTimeout(() => setDeploySuccess(true), 1000);
       } else {
-        setNotification({ type: 'error', message: 'Failed to hire agent.' });
+        setDeployLogs(prev => [...prev, 'ERROR: Deployment Failed. Check API logs.']);
       }
     } catch (e) {
-      console.error(e);
-      setNotification({ type: 'error', message: 'Error hiring agent.' });
-    } finally {
-      setHiring(false);
+      setDeployLogs(prev => [...prev, 'ERROR: Network failure.']);
     }
   };
 
-  const startInterview = (candidateId: string) => {
-    setInterviewing(candidateId);
-    setCurrentPhaseIndex(0);
-    setChatHistory([]);
-  };
+  // ----------------------------------------------------
+  // STEP RENDERERS
+  // ----------------------------------------------------
 
-  const sendMessage = async () => {
-    if (!userInput.trim() || !interviewing) return;
-
-    const currentPhase = INTERVIEW_PHASES[currentPhaseIndex];
-    const newMessage = { role: 'user', content: userInput };
-    const updatedHistory = [...chatHistory, newMessage];
-    
-    setChatHistory(updatedHistory);
-    setUserInput('');
-    setIsTyping(true);
-
-    try {
-      const res = await fetch('/api/os/marketplace/interview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          templateId: interviewing,
-          phase: currentPhase,
-          userInput: newMessage.content,
-          history: chatHistory
-        })
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setChatHistory([...updatedHistory, { role: 'assistant', content: data.response }]);
-      }
-    } catch (e) {
-      console.error('Interview chat error', e);
-    }
-    setIsTyping(false);
-  };
-
-  const nextPhase = () => {
-    if (currentPhaseIndex < INTERVIEW_PHASES.length - 1) {
-      setCurrentPhaseIndex(currentPhaseIndex + 1);
-    }
-  };
-
-  const activeCandidate = templates.find(c => c.id === interviewing);
-
-  if (loading) {
-    return (
-      <div className="h-full w-full flex flex-col items-center justify-center bg-[#FAFAFA]">
-        <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-gray-500 font-semibold tracking-widest uppercase text-[10px]">Loading Talent Pool...</p>
+  const renderStep1 = () => (
+    <div className="space-y-6">
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-gray-900 tracking-tight">Select Foundation Template</h2>
+        <p className="text-gray-500 mt-2">Choose a baseline role to accelerate the onboarding process.</p>
       </div>
-    );
-  }
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {TEMPLATES.map(t => {
+          const isCustom = t.id === 'custom';
+          return (
+          <div 
+            key={t.id} 
+            onClick={() => {
+              updateConfig({ 
+                templateId: t.id, 
+                name: `Agent ${Math.floor(Math.random() * 1000)}`, 
+                role: t.role, 
+                department: t.dept, 
+                personality: t.personality 
+              });
+              nextStep();
+            }}
+            className={`p-6 rounded-2xl border transition-all cursor-pointer group ${config.templateId === t.id ? 'bg-indigo-50 border-indigo-500 shadow-md' : isCustom ? 'bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-200 hover:border-indigo-400 hover:shadow-md shadow-sm' : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-indigo-400/50'}`}
+          >
+            <Users className={`w-8 h-8 mb-4 ${config.templateId === t.id ? 'text-indigo-600' : isCustom ? 'text-indigo-500' : 'text-gray-500 group-hover:text-indigo-600'}`} />
+            <h3 className={`text-xl font-bold mb-1 ${isCustom ? 'text-indigo-900' : 'text-gray-900'}`}>{t.name}</h3>
+            <p className="text-sm text-indigo-600 mb-3 font-semibold">{t.dept}</p>
+            <p className="text-sm text-gray-500">{t.desc}</p>
+          </div>
+        )})}
+      </div>
+    </div>
+  );
 
-  return (
-    <div className="h-full w-full flex flex-col p-10 overflow-y-auto custom-scrollbar bg-[#FAFAFA] text-gray-900">
-      {/* Header */}
-      <div className="flex items-end justify-between mb-10 pb-6 border-b border-gray-200">
-        <div>
-          <h1 className="text-4xl font-bold tracking-tight text-gray-900 mb-2">Talent Acquisition</h1>
-          <p className="text-gray-500 text-base font-medium">Interview and hire top-tier autonomous AI employees backed by the Prisma runtime.</p>
+  const renderStep2 = () => (
+    <div className="max-w-2xl mx-auto space-y-8">
+      <div className="mb-8 text-center">
+        <h2 className="text-3xl font-bold text-gray-900 tracking-tight">Employee Identity</h2>
+        <p className="text-gray-500 mt-2">Define the core identity of your new digital workforce member.</p>
+      </div>
+
+      <div className="flex justify-center mb-8">
+        <div className="w-32 h-32 rounded-3xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center font-bold text-5xl text-gray-900 shadow-2xl border border-indigo-500/30 overflow-hidden relative group cursor-pointer">
+          <span className="relative z-10">{config.name ? config.name.charAt(0) : 'A'}</span>
+          <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20">
+            <Upload className="w-6 h-6 text-gray-900" />
+          </div>
         </div>
       </div>
 
-      {notification && (
-        <div className={`mb-8 p-4 rounded-xl flex items-center justify-between font-medium shadow-sm ${notification.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
-          <span>{notification.message}</span>
-          <button onClick={() => setNotification(null)} className="p-1.5 hover:bg-white/5 rounded-lg transition-colors">
-            <X className="w-4 h-4" />
-          </button>
+      <div className="space-y-5">
+        <div>
+          <label className="block text-sm font-bold text-gray-600 mb-2 uppercase tracking-wider">Employee Name</label>
+          <input type="text" value={config.name} onChange={e => updateConfig({ name: e.target.value })} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="e.g. Alex Morgan" />
+        </div>
+        <div>
+          <label className="block text-sm font-bold text-gray-600 mb-2 uppercase tracking-wider">Role / Designation</label>
+          <input type="text" value={config.role} onChange={e => updateConfig({ role: e.target.value })} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="e.g. Senior Sales Manager" />
+        </div>
+        <div>
+          <label className="block text-sm font-bold text-gray-600 mb-2 uppercase tracking-wider">Department</label>
+          <input type="text" value={config.department} onChange={e => updateConfig({ department: e.target.value })} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="e.g. Sales" />
+        </div>
+        <div>
+          <label className="block text-sm font-bold text-gray-600 mb-2 uppercase tracking-wider">Employee Tagline</label>
+          <input type="text" value={config.tagline} onChange={e => updateConfig({ tagline: e.target.value })} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder='e.g. "Turning conversations into revenue."' />
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderStep3 = () => (
+    <div className="max-w-3xl mx-auto space-y-8">
+      <div className="mb-8 text-center">
+        <h2 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center justify-center gap-3"><Brain className="w-8 h-8 text-indigo-400" /> Personality Engine</h2>
+        <p className="text-gray-500 mt-2">Tune the behavioral matrix that dictates how this agent interacts.</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-6 mb-8">
+        <div>
+          <label className="block text-sm font-bold text-gray-600 mb-2 uppercase tracking-wider">Core Archetype</label>
+          <select value={config.personality} onChange={e => updateConfig({ personality: e.target.value })} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none">
+            <option className="bg-white">Professional</option>
+            <option className="bg-white">Friendly</option>
+            <option className="bg-white">Analytical</option>
+            <option className="bg-white">Creative</option>
+            <option className="bg-white">Leadership</option>
+            <option className="bg-white">Energetic</option>
+            <option className="bg-white">Empathetic</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-bold text-gray-600 mb-2 uppercase tracking-wider">Communication Style</label>
+          <select value={config.communicationStyle} onChange={e => updateConfig({ communicationStyle: e.target.value })} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none">
+            <option className="bg-white">Formal</option>
+            <option className="bg-white">Direct</option>
+            <option className="bg-white">Casual</option>
+            <option className="bg-white">Persuasive</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 p-8 rounded-3xl space-y-8">
+        {[
+          { label: 'Formality', key: 'formality' as keyof HiringConfig },
+          { label: 'Confidence', key: 'confidenceLevel' as keyof HiringConfig },
+          { label: 'Empathy', key: 'empathy' as keyof HiringConfig },
+          { label: 'Humor Level', key: 'humorLevel' as keyof HiringConfig }
+        ].map(slider => (
+          <div key={slider.label}>
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-sm font-bold text-gray-900 uppercase tracking-wider flex items-center gap-2"><Sliders className="w-4 h-4 text-indigo-400" /> {slider.label}</label>
+              <span className="text-indigo-400 font-bold">{config[slider.key] as unknown as number}%</span>
+            </div>
+            <input 
+              type="range" min="0" max="100" 
+              value={config[slider.key] as unknown as number} 
+              onChange={e => updateConfig({ [slider.key]: parseInt(e.target.value) })}
+              className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderStep4 = () => (
+    <div className="max-w-3xl mx-auto space-y-8">
+      <div className="mb-8 text-center">
+        <h2 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center justify-center gap-3"><BookOpen className="w-8 h-8 text-indigo-400" /> Knowledge & Training</h2>
+        <p className="text-gray-500 mt-2">Upload SOPs, FAQs, and documentation to inject into the agent's memory core.</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-6">
+        <div 
+          onClick={() => updateConfig({ knowledgeDocs: config.knowledgeDocs + 1 })}
+          className="border-2 border-dashed border-gray-300 hover:border-indigo-500 bg-white rounded-3xl p-10 flex flex-col items-center justify-center cursor-pointer transition-all hover:bg-gray-50 group"
+        >
+          <div className="w-16 h-16 rounded-full bg-indigo-500/20 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+            <Upload className="w-8 h-8 text-indigo-400" />
+          </div>
+          <h3 className="text-lg font-bold text-gray-900 mb-1">Upload Documents</h3>
+          <p className="text-xs text-gray-500 text-center">PDF, DOCX, TXT (Max 50MB)</p>
+        </div>
+
+        <div 
+          onClick={() => updateConfig({ knowledgeUrls: config.knowledgeUrls + 1 })}
+          className="border-2 border-dashed border-gray-300 hover:border-indigo-500 bg-white rounded-3xl p-10 flex flex-col items-center justify-center cursor-pointer transition-all hover:bg-gray-50 group"
+        >
+          <div className="w-16 h-16 rounded-full bg-purple-500/20 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+            <Database className="w-8 h-8 text-purple-400" />
+          </div>
+          <h3 className="text-lg font-bold text-gray-900 mb-1">Add Website URLs</h3>
+          <p className="text-xs text-gray-500 text-center">Scrape domains and wikis</p>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 p-6 rounded-2xl flex items-center justify-around">
+        <div className="text-center">
+          <p className="text-4xl font-black text-gray-900">{config.knowledgeDocs}</p>
+          <p className="text-xs text-gray-500 uppercase tracking-widest font-bold mt-1">Docs Uploaded</p>
+        </div>
+        <div className="h-12 w-px bg-gray-50"></div>
+        <div className="text-center">
+          <p className="text-4xl font-black text-gray-900">{config.knowledgeUrls}</p>
+          <p className="text-xs text-gray-500 uppercase tracking-widest font-bold mt-1">Websites Crawled</p>
+        </div>
+        <div className="h-12 w-px bg-gray-50"></div>
+        <div className="text-center">
+          <p className="text-4xl font-black text-emerald-600">75%</p>
+          <p className="text-xs text-gray-500 uppercase tracking-widest font-bold mt-1">Training Progress</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderStep5 = () => (
+    <div className="max-w-3xl mx-auto space-y-8">
+      <div className="mb-8 text-center">
+        <h2 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center justify-center gap-3"><FileText className="w-8 h-8 text-indigo-400" /> Responsibilities</h2>
+        <p className="text-gray-500 mt-2">Define daily tasks, goals, and KPIs.</p>
+      </div>
+
+      <div className="space-y-6">
+        <div className="bg-white border border-gray-200 p-6 rounded-3xl">
+          <h3 className="text-lg font-bold text-gray-900 mb-4">Daily Responsibilities</h3>
+          <ul className="space-y-3">
+            {config.responsibilities.map((r, i) => (
+              <li key={i} className="flex items-center gap-3 text-gray-600 bg-gray-50 px-4 py-2 rounded-xl">
+                <CheckCircle className="w-4 h-4 text-emerald-600" /> {r}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 flex gap-2">
+            <input type="text" placeholder="Add responsibility..." className="flex-1 bg-white border border-gray-200 rounded-xl px-4 py-2 text-gray-900 text-sm focus:outline-none focus:border-indigo-500" onKeyDown={e => { if (e.key === 'Enter') updateConfig({ responsibilities: [...config.responsibilities, e.currentTarget.value] }); }} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6">
+          <div className="bg-white border border-gray-200 p-6 rounded-3xl">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Objectives / Goals</h3>
+            <ul className="space-y-2 mb-4">
+              {config.goals.map((g, i) => <li key={i} className="text-sm text-gray-500">• {g}</li>)}
+            </ul>
+          </div>
+          <div className="bg-white border border-gray-200 p-6 rounded-3xl">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Target KPIs</h3>
+            <ul className="space-y-2 mb-4">
+              {config.kpis.map((k, i) => <li key={i} className="text-sm text-gray-500">• {k}</li>)}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderStep6 = () => (
+    <div className="max-w-4xl mx-auto space-y-8">
+      <div className="mb-8 text-center">
+        <h2 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center justify-center gap-3"><Shield className="w-8 h-8 text-indigo-400" /> Rules & Boundaries</h2>
+        <p className="text-gray-500 mt-2">Establish firm guardrails for autonomous operations.</p>
+      </div>
+
+      <div className="bg-rose-50 border border-rose-200 p-6 rounded-2xl mb-8 flex items-start gap-4">
+        <AlertCircle className="w-6 h-6 text-rose-600 shrink-0 mt-1" />
+        <div>
+          <h3 className="text-rose-600 font-bold mb-1">MANDATORY GENERAL RULES (Immutable)</h3>
+          <ul className="text-sm text-rose-600 space-y-1">
+            {config.rulesGeneral.map((r, i) => <li key={i}>• {r}</li>)}
+            <li>• Never approve payments.</li>
+            <li>• Always escalate critical issues.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-8">
+        <div>
+          <h3 className="text-lg font-bold text-gray-900 mb-4 uppercase tracking-wider text-sm">Permissions (CAN)</h3>
+          <ul className="space-y-2">
+            {config.permissions.can.map((p, i) => (
+              <li key={i} className="flex items-center gap-3 text-emerald-600 bg-emerald-900/20 border border-emerald-500/20 px-4 py-2.5 rounded-xl font-medium text-sm">
+                <CheckCircle className="w-4 h-4" /> {p}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <h3 className="text-lg font-bold text-gray-900 mb-4 uppercase tracking-wider text-sm">Restrictions (CANNOT)</h3>
+          <ul className="space-y-2">
+            {config.permissions.cannot.map((p, i) => (
+              <li key={i} className="flex items-center gap-3 text-rose-600 bg-rose-900/20 border border-rose-500/20 px-4 py-2.5 rounded-xl font-medium text-sm">
+                <X className="w-4 h-4" /> {p}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 p-6 rounded-3xl mt-8">
+        <h3 className="text-lg font-bold text-gray-900 mb-4">Decision Boundaries</h3>
+        <select value={config.decisionBoundaries} onChange={e => updateConfig({ decisionBoundaries: e.target.value })} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none">
+          <option>Manual (Drafts only, requires approval)</option>
+          <option>Semi Autonomous (Action within rules, escalate otherwise)</option>
+          <option>Fully Autonomous (End-to-end execution)</option>
+        </select>
+      </div>
+    </div>
+  );
+
+  const renderStep7 = () => (
+    <div className="max-w-2xl mx-auto space-y-8">
+      <div className="mb-8 text-center">
+        <h2 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center justify-center gap-3"><Mic className="w-8 h-8 text-indigo-400" /> Voice Configuration</h2>
+        <p className="text-gray-500 mt-2">Select the voice identity for phone calls, meetings, and voice studio.</p>
+      </div>
+
+      <div className="space-y-4">
+        {[
+          { id: 'kokoro-af_bella', name: 'English (US) - Female', type: 'Professional & Clear' },
+          { id: 'kokoro-am_michael', name: 'English (US) - Male', type: 'Deep & Authoritative' },
+          { id: 'kokoro-bf_emma', name: 'English (UK) - Female', type: 'Polite & Formal' },
+          { id: 'kokoro-am_adam', name: 'English (US) - Male', type: 'Energetic & Friendly' },
+        ].map(voice => (
+          <div 
+            key={voice.id}
+            onClick={() => updateConfig({ voiceId: voice.id })}
+            className={`p-5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${config.voiceId === voice.id ? 'bg-indigo-600/20 border-indigo-500' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+          >
+            <div className="flex items-center gap-4">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${config.voiceId === voice.id ? 'bg-indigo-500 text-gray-900' : 'bg-gray-100 text-gray-500'}`}>
+                <Mic className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-lg">{voice.name}</h3>
+                <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">{voice.type}</p>
+              </div>
+            </div>
+            <button className="p-3 bg-gray-50 hover:bg-white rounded-full transition-colors text-gray-900">
+              <Play className="w-4 h-4 fill-current" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderStep8 = () => (
+    <div className="max-w-4xl mx-auto space-y-8">
+      <div className="mb-8 text-center">
+        <h2 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center justify-center gap-3"><Zap className="w-8 h-8 text-indigo-400" /> App Integrations</h2>
+        <p className="text-gray-500 mt-2">Connect this agent to external platforms to grant operational access.</p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { id: 'gmail', name: 'Gmail', icon: 'M' },
+          { id: 'slack', name: 'Slack', icon: '#' },
+          { id: 'hubspot', name: 'HubSpot', icon: 'H' },
+          { id: 'stripe', name: 'Stripe', icon: '$' },
+          { id: 'calendar', name: 'Calendar', icon: 'C' },
+          { id: 'whatsapp', name: 'WhatsApp', icon: 'W' },
+          { id: 'github', name: 'GitHub', icon: 'G' },
+          { id: 'notion', name: 'Notion', icon: 'N' },
+        ].map(app => {
+          const isSelected = config.integrations.includes(app.id);
+          return (
+            <div 
+              key={app.id}
+              onClick={() => {
+                if (isSelected) updateConfig({ integrations: config.integrations.filter(i => i !== app.id) });
+                else updateConfig({ integrations: [...config.integrations, app.id] });
+              }}
+              className={`p-6 rounded-3xl border transition-all cursor-pointer flex flex-col items-center justify-center gap-3 ${isSelected ? 'bg-indigo-600/20 border-indigo-500' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+            >
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-xl ${isSelected ? 'bg-indigo-500 text-gray-900' : 'bg-gray-100 text-gray-500'}`}>
+                {app.icon}
+              </div>
+              <h3 className="font-bold text-gray-900">{app.name}</h3>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderStep9 = () => (
+    <div className="max-w-2xl mx-auto">
+      <div className="mb-8 text-center">
+        <h2 className="text-3xl font-bold text-gray-900 tracking-tight">Review & Deploy</h2>
+        <p className="text-gray-500 mt-2">Verify agent configurations before initializing deployment.</p>
+      </div>
+
+      <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-200 rounded-[2rem] p-8 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+          <Server className="w-64 h-64" />
+        </div>
+        
+        <div className="relative z-10 space-y-6">
+          <div className="flex items-center gap-6 pb-6 border-b border-gray-200">
+            <div className="w-20 h-20 rounded-2xl bg-indigo-500/20 flex items-center justify-center font-bold text-4xl text-indigo-400 border border-indigo-500/30">
+              {config.name.charAt(0) || 'A'}
+            </div>
+            <div>
+              <h3 className="text-3xl font-black text-gray-900">{config.name}</h3>
+              <p className="text-indigo-400 font-bold">{config.role} • {config.department}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Personality</span>
+              <p className="text-gray-900 font-medium">{config.personality} + {config.communicationStyle}</p>
+            </div>
+            <div>
+              <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Knowledge</span>
+              <p className="text-gray-900 font-medium">{config.knowledgeDocs} Documents, {config.knowledgeUrls} Websites</p>
+            </div>
+            <div>
+              <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Autonomy</span>
+              <p className="text-emerald-600 font-bold">{config.decisionBoundaries}</p>
+            </div>
+            <div>
+              <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Voice Profile</span>
+              <p className="text-gray-900 font-medium">{config.voiceId.includes('af') || config.voiceId.includes('bf') ? 'Female' : 'Male'} Profile</p>
+            </div>
+          </div>
+
+          <div className="pt-6 border-t border-gray-200">
+            <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-2 block">Key Responsibilities</span>
+            <ul className="text-sm text-gray-600 space-y-1">
+              {config.responsibilities.slice(0,3).map((r,i) => <li key={i}>• {r}</li>)}
+              {config.responsibilities.length > 3 && <li className="text-indigo-400 italic">+{config.responsibilities.length - 3} more</li>}
+            </ul>
+          </div>
+          
+          <div className="pt-6 border-t border-gray-200">
+            <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-2 block">Active Integrations</span>
+            <div className="flex gap-2">
+              {config.integrations.length > 0 ? config.integrations.map(i => (
+                <span key={i} className="px-3 py-1 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-600 capitalize">{i}</span>
+              )) : <span className="text-gray-500 text-sm">None</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderStep10 = () => {
+    if (deploySuccess) {
+      return (
+        <div className="max-w-2xl mx-auto text-center space-y-8 animate-in fade-in zoom-in duration-700">
+          <div className="w-32 h-32 mx-auto rounded-full bg-emerald-500/20 flex items-center justify-center border-4 border-emerald-500 shadow-[0_0_100px_rgba(16,185,129,0.4)]">
+            <CheckCircle className="w-16 h-16 text-emerald-600" />
+          </div>
+          <div>
+            <h1 className="text-5xl font-black text-gray-900 tracking-tight mb-4">Congratulations!</h1>
+            <p className="text-xl text-emerald-600 font-medium mb-6">{config.name} has joined your organization.</p>
+            <p className="text-gray-500 max-w-lg mx-auto leading-relaxed">
+              He will work 24/7, follow company rules, collaborate with your team, and continuously contribute to business growth across all integrated systems.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-8">
+            <button 
+              onClick={() => router.push(`/dashboard/workforce/employees/${createdEmployeeId}`)}
+              className="w-full sm:w-auto px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-gray-900 font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
+            >
+              <Users className="w-5 h-5" /> Open Employee Profile
+            </button>
+            <button 
+              onClick={() => router.push(`/dashboard/voice`)}
+              className="w-full sm:w-auto px-8 py-4 bg-gray-50 hover:bg-white/20 text-gray-900 font-bold rounded-xl transition-all border border-gray-200 flex items-center justify-center gap-2"
+            >
+              <Mic className="w-5 h-5" /> Start Voice Conversation
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="max-w-3xl mx-auto flex flex-col items-center justify-center h-full min-h-[500px]">
+        <div className="w-24 h-24 mb-12 relative">
+          <div className="absolute inset-0 border-4 border-indigo-500/30 rounded-full animate-ping"></div>
+          <div className="absolute inset-2 border-4 border-indigo-400/50 rounded-full animate-pulse"></div>
+          <div className="absolute inset-4 border-4 border-indigo-300 rounded-full animate-spin"></div>
+        </div>
+        
+        <div className="w-full max-w-md bg-white border border-indigo-500/30 rounded-2xl p-6 font-mono text-sm h-64 overflow-y-auto custom-scrollbar shadow-[0_0_50px_rgba(99,102,241,0.1)]">
+          {deployLogs.map((log, i) => (
+            <motion.div 
+              key={i} 
+              initial={{ opacity: 0, x: -10 }} 
+              animate={{ opacity: 1, x: 0 }} 
+              className={`mb-2 ${log.includes('Successfully') ? 'text-emerald-600 font-bold' : log.includes('ERROR') ? 'text-rose-600' : 'text-indigo-600'}`}
+            >
+              <span className="text-gray-600 mr-2">[{new Date().toISOString().split('T')[1].slice(0,-1)}]</span>
+              {log}
+            </motion.div>
+          ))}
+          <div ref={el => el?.scrollIntoView()} />
+        </div>
+      </div>
+    );
+  };
+
+  // ----------------------------------------------------
+  // MAIN RENDER
+  // ----------------------------------------------------
+
+  return (
+    <div className="h-full w-full flex flex-col bg-[#FAFAFA] text-gray-800 overflow-hidden relative selection:bg-indigo-500/30">
+      {/* Background */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+        <div className="absolute top-[-20%] right-[-10%] w-[70%] h-[70%] rounded-full blur-[150px] opacity-20 bg-indigo-600" />
+        <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full blur-[120px] opacity-10 bg-purple-600" />
+      </div>
+
+      {/* Header Area */}
+      {!isDeploying && (
+        <div className="relative z-10 px-10 pt-10 pb-6 shrink-0 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
+              <UserPlus className="w-6 h-6 text-indigo-400" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-black text-gray-900 tracking-tight">Hire Employee</h1>
+              <p className="text-gray-500 text-sm font-medium uppercase tracking-widest mt-1">Creation Pipeline</p>
+            </div>
+          </div>
+          <button onClick={() => router.push('/dashboard/workforce')} className="p-2 text-gray-500 hover:text-gray-900 bg-white rounded-full transition-colors"><X className="w-5 h-5" /></button>
         </div>
       )}
 
-      {/* Featured Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-8">
-        {templates.map((candidate, idx) => (
-          <motion.div 
-            key={candidate.id}
+      {/* Progress Bar */}
+      {!isDeploying && (
+        <div className="relative z-10 px-10 py-4 border-b border-gray-200 bg-white backdrop-blur-md">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Step {step} of 9</span>
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">{STEPS[step-1]}</span>
+          </div>
+          <div className="w-full h-1.5 bg-white rounded-full overflow-hidden">
+            <motion.div 
+              className="h-full bg-gradient-to-r from-indigo-500 to-purple-500"
+              initial={{ width: `${((step - 1) / 9) * 100}%` }}
+              animate={{ width: `${(step / 9) * 100}%` }}
+              transition={{ duration: 0.3 }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-10 relative z-10">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={step}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: (idx % 10) * 0.1 }}
-            className="group relative rounded-3xl bg-white border border-gray-200 hover:border-indigo-300 hover:shadow-lg transition-all overflow-hidden flex flex-col h-[440px]"
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            className="h-full"
           >
-            {/* Top Banner & Avatar */}
-            <div className="h-28 bg-indigo-50 relative border-b border-indigo-100">
-              <div className="absolute -bottom-10 left-8 w-20 h-20 rounded-2xl bg-white flex items-center justify-center font-bold text-3xl text-indigo-600 shadow-md border border-gray-100">
-                {candidate.name.charAt(0)}
-              </div>
-            </div>
-
-            {/* Info */}
-            <div className="pt-14 px-8 pb-8 flex-1 flex flex-col">
-              <div className="mb-5">
-                <h3 className="text-2xl font-bold text-gray-900 leading-tight mb-1">{candidate.name}</h3>
-                <p className="text-sm font-semibold text-indigo-600 uppercase tracking-wide">{candidate.role}</p>
-              </div>
-
-              <p className="text-sm text-gray-600 line-clamp-3 mb-6 flex-1 font-medium leading-relaxed">"{candidate.description || candidate.personality}"</p>
-
-              {/* Actions */}
-              <div className="flex gap-4 mt-auto">
-                <button 
-                  onClick={() => startInterview(candidate.id)}
-                  className="flex-1 py-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm"
-                >
-                  <Video className="w-4 h-4 text-indigo-500" />
-                  Interview
-                </button>
-                <button 
-                  disabled={hiring}
-                  onClick={() => handleHire(candidate.id)}
-                  className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-gray-900 text-sm font-bold transition-colors shadow-sm"
-                >
-                  {hiring ? 'Hiring...' : 'Hire'}
-                </button>
-              </div>
-            </div>
+            {step === 1 && renderStep1()}
+            {step === 2 && renderStep2()}
+            {step === 3 && renderStep3()}
+            {step === 4 && renderStep4()}
+            {step === 5 && renderStep5()}
+            {step === 6 && renderStep6()}
+            {step === 7 && renderStep7()}
+            {step === 8 && renderStep8()}
+            {step === 9 && renderStep9()}
+            {step === 10 && renderStep10()}
           </motion.div>
-        ))}
-        {templates.length === 0 && <div className="text-gray-500 font-medium col-span-full p-12 text-center bg-gray-50 border border-gray-200 border-dashed rounded-3xl">No templates found in database.</div>}
+        </AnimatePresence>
       </div>
 
-      {/* Interview Overlay */}
-      <AnimatePresence>
-        {activeCandidate && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm p-8"
+      {/* Footer Navigation */}
+      {!isDeploying && (
+        <div className="relative z-10 px-10 py-6 border-t border-gray-200 bg-white backdrop-blur-xl flex items-center justify-between shrink-0">
+          <button 
+            onClick={prevStep}
+            disabled={step === 1}
+            className="px-6 py-3 rounded-xl text-gray-900 font-bold disabled:opacity-30 hover:bg-gray-50 transition-colors"
           >
-            <motion.div 
-              initial={{ scale: 0.95, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 20 }}
-              className="w-full max-w-6xl h-[85vh] bg-white border border-gray-200 rounded-3xl shadow-2xl flex overflow-hidden relative"
+            Back
+          </button>
+          
+          {step < 9 ? (
+            <button 
+              onClick={nextStep}
+              className="px-8 py-3 rounded-xl bg-white text-black font-bold hover:bg-gray-200 transition-colors flex items-center gap-2"
             >
-              {/* Left sidebar info */}
-              <div className="w-1/3 bg-gray-50 border-r border-gray-200 p-10 flex flex-col relative overflow-hidden">
-                <div className="w-24 h-24 rounded-3xl bg-white flex items-center justify-center font-bold text-4xl text-indigo-600 shadow-sm border border-gray-200 mb-6 relative z-10">
-                  {activeCandidate.name.charAt(0)}
-                </div>
-                <h2 className="text-3xl font-bold text-gray-900 relative z-10 mb-1">{activeCandidate.name}</h2>
-                <p className="text-indigo-600 font-bold uppercase tracking-wider text-[10px] mb-8 relative z-10">{activeCandidate.role}</p>
-
-                <div className="space-y-8 relative z-10 flex-1 overflow-y-auto custom-scrollbar pr-2">
-                  <div>
-                    <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4">Interview Progress</h4>
-                    <div className="space-y-3">
-                      {INTERVIEW_PHASES.map((phase, idx) => (
-                        <div key={phase} className={`flex items-center gap-3 text-sm font-semibold ${idx === currentPhaseIndex ? 'text-indigo-600' : idx < currentPhaseIndex ? 'text-emerald-600' : 'text-gray-500'}`}>
-                          <div className={`w-2.5 h-2.5 rounded-full ${idx === currentPhaseIndex ? 'bg-indigo-500 animate-pulse ring-4 ring-indigo-100' : idx < currentPhaseIndex ? 'bg-emerald-500' : 'bg-gray-300'}`} />
-                          {phase}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">Personality</h4>
-                    <p className="text-sm font-medium text-gray-600 leading-relaxed">{activeCandidate.personality}</p>
-                  </div>
-                  <div>
-                    <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">Strengths</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {activeCandidate.strengths?.map((s: string) => (
-                        <span key={s} className="px-3 py-1.5 bg-white border border-gray-200 shadow-sm rounded-lg text-xs font-bold text-gray-700">
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-8 relative z-10 pt-6 border-t border-gray-200">
-                  <button onClick={() => handleHire(activeCandidate.id)} disabled={hiring} className="w-full py-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-gray-900 font-bold transition-all shadow-sm">
-                    {hiring ? 'Deploying to Workforce...' : 'Make Offer & Hire'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Chat / Interview Area */}
-              <div className="flex-1 flex flex-col relative bg-white">
-                <div className="h-20 border-b border-gray-100 flex items-center justify-between px-8 bg-white shrink-0">
-                  <div className="flex items-center gap-3">
-                    <span className="relative flex h-3 w-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
-                    </span>
-                    <span className="text-sm font-bold text-gray-900 tracking-widest uppercase">
-                      Live Interview: {INTERVIEW_PHASES[currentPhaseIndex]}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    {currentPhaseIndex < INTERVIEW_PHASES.length - 1 && (
-                      <button onClick={nextPhase} className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition-colors">
-                        Next Phase <ChevronRight className="w-4 h-4" />
-                      </button>
-                    )}
-                    <div className="w-px h-6 bg-gray-200" />
-                    <button onClick={() => setInterviewing(null)} className="p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-600 rounded-xl transition-colors">
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex-1 p-8 overflow-y-auto space-y-6 custom-scrollbar bg-gray-50/50">
-                  {chatHistory.map((msg, idx) => (
-                    <div key={idx} className={`flex gap-4 ${msg.role === 'assistant' ? 'flex-row-reverse' : ''}`}>
-                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 shadow-sm border ${msg.role === 'assistant' ? 'bg-white text-indigo-600 border-gray-200' : 'bg-gray-900 text-gray-900 border-gray-900'}`}>
-                        {msg.role === 'assistant' ? activeCandidate.name.charAt(0) : 'CEO'}
-                      </div>
-                      <div className={`p-4.5 text-sm font-medium leading-relaxed max-w-[80%] shadow-sm ${msg.role === 'assistant' ? 'bg-white text-gray-700 rounded-2xl rounded-tr-sm border border-gray-200' : 'bg-indigo-50 border border-indigo-100 text-indigo-900 rounded-2xl rounded-tl-sm'}`}>
-                        {msg.content}
-                      </div>
-                    </div>
-                  ))}
-                  {isTyping && (
-                    <div className="flex gap-4 flex-row-reverse">
-                      <div className="w-10 h-10 rounded-2xl bg-white border border-gray-200 flex items-center justify-center font-bold text-sm text-indigo-600 shrink-0 shadow-sm">
-                        {activeCandidate.name.charAt(0)}
-                      </div>
-                      <div className="bg-white border border-gray-200 rounded-2xl rounded-tr-sm p-5 text-sm text-gray-500 flex gap-1.5 items-center shadow-sm">
-                        <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
-                        <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></div>
-                        <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
-                      </div>
-                    </div>
-                  )}
-                  <div ref={chatEndRef} />
-                </div>
-
-                <div className="p-8 border-t border-gray-100 bg-white">
-                  <div className="relative flex items-center">
-                    <input
-                      type="text"
-                      value={userInput}
-                      onChange={(e) => setUserInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                      placeholder={`Ask ${activeCandidate.name} a question...`}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl py-4 pl-5 pr-32 text-gray-900 font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 transition-all shadow-inner"
-                    />
-                    <div className="absolute right-2 flex gap-2">
-                      <button className="p-2.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-                        <Mic className="w-5 h-5" />
-                      </button>
-                      <button onClick={sendMessage} className="px-5 py-2.5 text-gray-900 bg-indigo-600 rounded-lg hover:bg-indigo-700 font-bold text-sm transition-colors shadow-sm">
-                        Send
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              Continue <ArrowRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <button 
+              onClick={() => { nextStep(); startDeployment(); }}
+              className="px-10 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-gray-900 font-bold transition-all shadow-[0_0_20px_rgba(99,102,241,0.4)] flex items-center gap-2"
+            >
+              <Zap className="w-4 h-4" /> Initialize Deployment
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

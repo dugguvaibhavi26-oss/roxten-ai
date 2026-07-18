@@ -71,6 +71,7 @@ export function Sidebar() {
   ];
 
   const bottomNav = [
+    { name: 'Integrations Hub', href: '/dashboard/integrations', icon: Workflow },
     { name: 'Business Profile', href: '/dashboard/profile', icon: Briefcase },
     { name: 'Settings', href: '/dashboard/settings', icon: SettingsIcon },
   ];
