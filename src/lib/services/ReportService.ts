@@ -103,7 +103,7 @@ ${JSON.stringify(snapshotData, null, 2)}`;
       periodStart: isoStart,
       periodEnd: now.toISOString(),
       generatedBy: requestedBy,
-      metricsSnapshot: snapshotData,
+      metricsSnapshot: JSON.parse(JSON.stringify(snapshotData)), // Strip undefined
       summary: parsedData.executiveSummary || 'Report generated successfully.',
       highlights: parsedData.highlights || [],
       risks: parsedData.risks || [],

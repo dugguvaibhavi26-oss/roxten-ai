@@ -41,7 +41,7 @@ export default function ReportsPage() {
         console.error('API Error:', res.status, errorText);
         alert(`Failed to generate report: ${errorText}`);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Fetch Error:', e);
       alert(`Network error: ${e.message}`);
     }
