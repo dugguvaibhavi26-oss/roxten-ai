@@ -17,6 +17,7 @@ export default function AppearanceEditor() {
   const params = useParams();
   const websiteId = params.websiteId as string;
   const [loading, setLoading] = useState(true);
+  const [sections, setSections] = useState<any[]>([]);
 
   useEffect(() => {
     fetch(`/api/os/websites/editor?websiteId=${websiteId}`)

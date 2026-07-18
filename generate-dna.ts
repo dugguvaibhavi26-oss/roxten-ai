@@ -12,7 +12,7 @@ async function generateMissingDNA() {
     // Attempt to generate DNA (it will overwrite or create)
     const dna = await IntelligenceService.generateCompanyDNA(businessId);
     if (dna) {
-      console.log(`Successfully generated DNA for ${businessId}: ${dna.mission.substring(0, 50)}...`);
+      console.log(`Successfully generated DNA for ${businessId}: ${(dna as any).mission?.substring(0, 50) || 'N/A'}...`);
     } else {
       console.log(`No knowledge/insights available to generate DNA for ${businessId}.`);
     }
