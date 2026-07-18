@@ -27,6 +27,7 @@ export default function AIBoardroom() {
   const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
   const [ceoInput, setCeoInput] = useState('');
   const [summary, setSummary] = useState<string | null>(null);
+  const [decisions, setDecisions] = useState<any[]>([]);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -143,80 +144,27 @@ export default function AIBoardroom() {
       });
       const data = await res.json();
       if (res.ok) {
-        setSummary(data.result.summaryText);
+        setDecisions(data.result.decisions || []);
         
-        // Dispatch Events for Ecosystem Propagation
-        if (pipeline) {
-          pipeline.dispatch({
-            type: 'ACTIVITY_LOGGED',
-            sender: 'System',
-            receiver: 'System',
-            intent: 'LOG',
-            status: 'completed',
-            priority: 'normal',
-            payload: {
-              eventType: 'MEETING_COMPLETED',
-              content: `Meeting "${topic}" concluded.`
-            }
-          });
-
-          pipeline.dispatch({
-            type: 'KNOWLEDGE_CREATED',
-            sender: 'System',
-            receiver: 'System',
-            intent: 'STATE_UPDATE',
-            status: 'completed',
-            priority: 'normal',
-            payload: {
-              title: `Boardroom Meeting Summary: ${topic}`,
-              content: data.result.summaryText,
-              tags: ['meeting', 'boardroom', 'strategy'],
-              sourceType: 'MEETING'
-            }
-          });
-
-          // Dispatch Decisions
-          data.result.decisions?.forEach((dec: any) => {
-            pipeline.dispatch({
-              type: 'DECISION_MADE',
-              sender: 'System',
-              receiver: 'System',
-              intent: 'STATE_UPDATE',
-              status: 'completed',
-              priority: 'high',
-              payload: {
-                key: dec.key,
-                value: dec.value
-              }
-            });
-          });
-
-          // Dispatch Action Items (Tasks)
-          data.result.actionItems?.forEach((task: any) => {
-            // Find employee by name approx
-            const assignedEmp = employees.find(e => e.name.toLowerCase().includes(task.owner.toLowerCase()) || task.owner.toLowerCase().includes(e.role.toLowerCase()));
-            
-            pipeline.dispatch({
-              type: 'TASK_ASSIGNED',
-              sender: 'System',
-              receiver: assignedEmp ? assignedEmp.id : 'general',
-              intent: 'COMMAND',
-              status: 'pending',
-              priority: 'high',
-              payload: {
-                employeeId: assignedEmp ? assignedEmp.id : null,
-                title: task.title,
-                description: task.description,
-                priority: 'HIGH'
-              }
-            });
-          });
-        }
+        setSummary('Meeting concluded. Decisions generated below.');
       }
     } catch (e) {
       console.error(e);
     }
     setIsSummarizing(false);
+  };
+
+  const approveDecision = async (id: string) => {
+    try {
+      const res = await fetch(`/api/os/boardroom/decisions/${id}/approve`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        setDecisions(prev => prev.map(d => d.id === id ? { ...d, status: 'APPROVED' } : d));
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   if (loadingEmployees) {
@@ -436,8 +384,32 @@ export default function AIBoardroom() {
                   <FileText className="w-6 h-6 text-emerald-600" />
                   <h3 className="font-bold text-emerald-700 uppercase tracking-widest text-sm">Executive Summary</h3>
                 </div>
-                <div className="text-sm text-emerald-900 font-medium whitespace-pre-wrap leading-relaxed">
+                <div className="text-sm text-emerald-900 font-medium whitespace-pre-wrap leading-relaxed mb-6">
                   {summary}
+                </div>
+                <div className="flex flex-col gap-4">
+                  {decisions.map((dec, i) => (
+                    <div key={i} className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="font-bold text-gray-900">{dec.title}</h4>
+                        <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase tracking-wider ${
+                          dec.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {dec.status}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-4">{dec.description}</p>
+                      
+                      {dec.status === 'DRAFT' && (
+                        <button 
+                          onClick={() => approveDecision(dec.id)}
+                          className="flex items-center gap-2 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-lg transition-colors"
+                        >
+                          <CheckCircle2 className="w-4 h-4" /> Approve & Create Tasks
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </motion.div>
             )}

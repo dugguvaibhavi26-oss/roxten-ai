@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Users, Zap, Send, Plus } from 'lucide-react';
+import { MessageSquare, Users, Zap, Send, Plus, Check, CheckCheck } from 'lucide-react';
 
 export default function CommunicationFeed() {
   const [employees, setEmployees] = useState<any[]>([]);
@@ -53,6 +53,15 @@ export default function CommunicationFeed() {
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    
+    // Mark thread as read
+    if (activeThreadId) {
+      fetch('/api/os/communication', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activityId: activeThreadId })
+      }).catch(console.error);
+    }
   }, [threads, activeThreadId]);
 
   const activeThread = threads.find(t => t.id === activeThreadId);
@@ -70,7 +79,7 @@ export default function CommunicationFeed() {
       if (t.id === activeThreadId) {
         return {
           ...t,
-          ActivityEvent: [...t.ActivityEvent, { id: tempId, actor: 'CEO', content: msg, eventType: 'MESSAGE' }]
+          ActivityEvent: [...t.ActivityEvent, { id: tempId, actor: 'CEO', content: msg, eventType: 'MESSAGE', metadata: { status: 'CREATED' } }]
         };
       }
       return t;
@@ -158,9 +167,16 @@ export default function CommunicationFeed() {
                   <h4 className="text-sm font-bold text-gray-200 truncate">
                     {thread.employeeId === 'general' ? 'General Broadcast' : employees.find(e => e.id === thread.employeeId)?.name || 'Direct Thread'}
                   </h4>
-                  <p className="text-xs text-gray-500 truncate mt-1">
-                    {lastEvent ? `${lastEvent.actor}: ${lastEvent.content}` : 'No messages yet'}
-                  </p>
+                  <div className="flex justify-between items-center mt-1">
+                    <p className="text-xs text-gray-500 truncate w-[80%]">
+                      {lastEvent ? `${lastEvent.actor}: ${lastEvent.content}` : 'No messages yet'}
+                    </p>
+                    {lastEvent?.actor === 'CEO' && lastEvent.metadata?.status && (
+                      <span className="text-indigo-400">
+                        {lastEvent.metadata.status === 'READ' ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />}
+                      </span>
+                    )}
+                  </div>
                 </div>
               )
             })}
@@ -245,10 +261,42 @@ export default function CommunicationFeed() {
                           }`}>
                             {msg.content}
                           </div>
+                          
+                          {isCeo && msg.metadata?.status && (
+                            <div className="mt-1 text-gray-400">
+                              {msg.metadata.status === 'READ' ? (
+                                <CheckCheck className="w-4 h-4 text-emerald-600" />
+                              ) : (
+                                <Check className="w-4 h-4" />
+                              )}
+                            </div>
+                          )}
                         </div>
                       </motion.div>
                     )
                   })}
+                  
+                  {isSending && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex gap-4"
+                    >
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-gray-900 shadow-lg shrink-0 bg-indigo-600">
+                        AI
+                      </div>
+                      <div className="max-w-[70%] flex flex-col items-start">
+                        <div className="flex items-baseline gap-2 mb-1">
+                          <span className="font-bold text-gray-900 text-sm">Typing...</span>
+                        </div>
+                        <div className="p-4 rounded-2xl bg-white border border-gray-200 rounded-tl-none flex gap-1">
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
                 </AnimatePresence>
                 <div ref={chatEndRef} />
               </div>

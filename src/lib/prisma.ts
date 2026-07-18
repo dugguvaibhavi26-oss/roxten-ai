@@ -216,7 +216,7 @@ const prismaBase: Record<string, FirestoreAdapter> = {
   employee: new FirestoreAdapter('employees'),
   employeeAnalytics: new FirestoreAdapter('employeeAnalytics'),
   activity: new FirestoreAdapter('activities'),
-  activityEvent: new FirestoreAdapter('timeline'),
+  activityEvent: new FirestoreAdapter('activityEvents'),
   businessKnowledge: new FirestoreAdapter('knowledgeBase'),
   memory: new FirestoreAdapter('employeeMemory'),
   task: new FirestoreAdapter('tasks'),

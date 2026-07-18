@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { EventService } from '@/lib/services/EventService';
 
 export async function GET() {
   try {
@@ -73,14 +74,16 @@ export async function POST(req: Request) {
       }
     });
 
-    await prisma.businessTimelineEvent.create({
-      data: {
-        businessId: business.id,
-        type: 'TASK_EVENT',
-        title: `Campaign Launched: ${name}`,
-        description: `Task assigned to Marketing.`,
-        createdAt: new Date()
-      }
+    await EventService.publish({
+      businessId: business.id,
+      eventType: 'MARKETING_CAMPAIGN_CREATED',
+      module: 'MARKETING',
+      title: `Campaign Launched: ${name}`,
+      description: `Campaign created and assigned to Marketing. Budget: $${budget}`,
+      actor: 'CEO',
+      targetEntity: 'Campaign',
+      relatedEntityId: campaign.id,
+      severity: 'SUCCESS'
     });
 
     return NextResponse.json({ success: true, data: campaign });

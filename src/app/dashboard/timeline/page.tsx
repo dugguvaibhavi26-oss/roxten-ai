@@ -1,89 +1,110 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Activity, Clock, Zap, BookOpen, Users, Globe } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Activity, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+import { TimelineAnalytics } from '@/components/ui/os/timeline/TimelineAnalytics';
+import { TimelineFilters } from '@/components/ui/os/timeline/TimelineFilters';
+import { TimelineFeed } from '@/components/ui/os/timeline/TimelineFeed';
+import { TimelineDetailsPanel } from '@/components/ui/os/timeline/TimelineDetailsPanel';
 
 export default function TimelinePage() {
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  const [filters, setFilters] = useState({
+    module: '',
+    severity: '',
+    search: ''
+  });
 
-  useEffect(() => {
-    fetch('/api/os/timeline')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          setEvents(data.data);
-        }
-        setLoading(false);
-      });
-  }, []);
+  const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
 
-  const getEventIcon = (type: string) => {
-    switch (type) {
-      case 'EMPLOYEE_EVENT': return <Users className="w-5 h-5 text-indigo-400" />;
-      case 'KNOWLEDGE_EVENT': return <BookOpen className="w-5 h-5 text-emerald-400" />;
-      case 'TASK_EVENT': return <Zap className="w-5 h-5 text-amber-400" />;
-      case 'CHANNEL_EVENT': return <Globe className="w-5 h-5 text-blue-400" />;
-      default: return <Activity className="w-5 h-5 text-gray-500" />;
+  const fetchEvents = useCallback(async () => {
+    try {
+      const query = new URLSearchParams();
+      if (filters.module) query.append('module', filters.module);
+      if (filters.severity) query.append('severity', filters.severity);
+      if (filters.search) query.append('search', filters.search);
+      query.append('limit', '100'); // Load recent 100 for view
+
+      const res = await fetch(`/api/os/timeline?${query.toString()}`);
+      const data = await res.json();
+      
+      if (data.success) {
+        setEvents(data.data);
+      }
+    } catch (e) {
+      console.error(e);
     }
+    setLoading(false);
+  }, [filters]);
+
+  // Initial load & Polling
+  useEffect(() => {
+    fetchEvents();
+    const interval = setInterval(fetchEvents, 10000); // Live polling every 10s
+    return () => clearInterval(interval);
+  }, [fetchEvents]);
+
+  const handleExport = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(events, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href",     dataStr);
+    downloadAnchorNode.setAttribute("download", "roxten_timeline_export.json");
+    document.body.appendChild(downloadAnchorNode); // required for firefox
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
   };
 
-  if (loading) {
-    return <div className="h-full flex items-center justify-center">Loading Timeline...</div>;
+  if (loading && events.length === 0) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[#FAFAFA]">
+        <div className="w-12 h-12 rounded-full border-4 border-indigo-200 border-t-indigo-600 animate-spin" />
+      </div>
+    );
   }
 
   return (
-    <div className="h-full w-full flex flex-col bg-[#FAFAFA] text-gray-900 overflow-hidden relative">
+    <div className="h-full w-full bg-[#FAFAFA] flex flex-col p-6 lg:p-10 overflow-y-auto custom-scrollbar relative">
+      
       {/* Background decoration */}
       <div className="absolute top-0 inset-x-0 h-64 bg-gradient-to-b from-white to-transparent pointer-events-none" />
-      
-      <div className="px-10 pt-10 pb-6 shrink-0 relative z-10 border-b border-gray-200 bg-white0 backdrop-blur-md">
-        <h1 className="text-3xl font-bold tracking-tight mb-2 flex items-center gap-3 text-gray-900">
-          <Activity className="w-6 h-6 text-indigo-600" />
-          Timeline
-        </h1>
-        <p className="text-gray-500 text-sm font-medium">The chronological record of all autonomous business operations.</p>
-      </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar relative px-10 pt-8 pb-32">
-        <div className="max-w-3xl">
-          <div className="absolute top-0 bottom-0 left-[3.25rem] w-px bg-gray-200" />
-          
-          <div className="space-y-6 relative">
-            <AnimatePresence>
-              {events.length === 0 ? (
-                <div className="text-center p-12 text-gray-500 font-medium">No events recorded yet.</div>
-              ) : (
-                events.map((event, idx) => (
-                  <motion.div 
-                    key={event.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: Math.min(idx * 0.05, 0.5) }}
-                    className="flex gap-5 relative group"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center relative z-10 shrink-0 mt-0.5 group-hover:border-indigo-200 transition-colors">
-                      {getEventIcon(event.type)}
-                    </div>
-                    
-                    <div className="flex-1 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm group-hover:shadow-md transition-shadow">
-                      <div className="flex justify-between items-start mb-1.5">
-                        <h3 className="text-sm font-bold text-gray-900">{event.title}</h3>
-                        <span className="text-[11px] font-medium text-gray-500 flex items-center gap-1 bg-gray-50 px-2 py-1 rounded-full border border-gray-100">
-                          <Clock className="w-3 h-3" />
-                          {new Date(event.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
-                        </span>
-                      </div>
-                      {event.description && <p className="text-sm text-gray-600 leading-relaxed">{event.description}</p>}
-                    </div>
-                  </motion.div>
-                ))
-              )}
-            </AnimatePresence>
-          </div>
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-8 relative z-10">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
+            <Activity className="w-8 h-8 text-indigo-600" /> Immutable Timeline
+          </h1>
+          <p className="text-sm text-gray-500 mt-2 font-medium max-w-xl">
+            The permanent audit log of all business events and AI operations across Roxten OS.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={handleExport}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-bold shadow-sm hover:bg-gray-50 transition-colors"
+          >
+            <Download className="w-4 h-4 text-gray-400" /> Export JSON
+          </button>
         </div>
       </div>
+
+      <div className="relative z-10">
+        <TimelineAnalytics events={events} />
+        <TimelineFilters filters={filters} setFilters={setFilters} />
+        
+        <TimelineFeed events={events} onSelectEvent={setSelectedEvent} />
+      </div>
+
+      {/* Side Panel Details */}
+      <TimelineDetailsPanel 
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+      />
+
     </div>
   );
 }

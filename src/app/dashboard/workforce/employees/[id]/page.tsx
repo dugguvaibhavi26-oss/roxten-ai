@@ -16,6 +16,7 @@ export default function EmployeeOffice() {
   const [employee, setEmployee] = useState<any>(null);
   const [activities, setActivities] = useState<any[]>([]);
   const [knowledge, setKnowledge] = useState<any[]>([]);
+  const [coworkers, setCoworkers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('brain');
 
@@ -25,7 +26,7 @@ export default function EmployeeOffice() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const { startCall, voiceState, activeEmployeeId } = useVoice();
+  const { startCall, endCall, voiceState, activeEmployeeId } = useVoice();
   const isVoiceMode = voiceState !== 'idle' && activeEmployeeId === employee?.id;
 
   useEffect(() => {
@@ -43,6 +44,7 @@ export default function EmployeeOffice() {
           });
           setActivities(data.activities || []);
           setKnowledge(data.knowledge || []);
+          setCoworkers(data.coworkers || []);
         }
         setLoading(false);
       });
@@ -407,15 +409,64 @@ export default function EmployeeOffice() {
 
             {/* COWORKERS TAB */}
             {activeTab === 'relationships' && (
-              <div className="max-w-4xl">
+              <div className="max-w-4xl pb-20">
                 <h2 className="text-2xl font-bold text-white mb-8 flex items-center gap-3">
                   <Users className="w-6 h-6 text-indigo-400" /> Department Coworkers
                 </h2>
-                <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-md flex flex-col items-center justify-center text-center">
-                  <Users className="w-16 h-16 text-gray-600 mb-4" />
-                  <p className="text-gray-300 text-lg mb-2">Coworker mapping is active.</p>
-                  <p className="text-gray-500 max-w-md">Agents in the {employee.department?.name} department can organically collaborate and hand off tasks to one another.</p>
-                </div>
+                
+                {coworkers.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-4">
+                    {coworkers.map((peer: any) => (
+                      <div key={peer.id} className="bg-white/5 border border-white/10 p-6 rounded-3xl backdrop-blur-md flex flex-col md:flex-row items-start md:items-center justify-between gap-6 group hover:bg-white/10 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className="w-14 h-14 rounded-2xl bg-indigo-500/20 flex items-center justify-center font-bold text-2xl text-indigo-400 border border-indigo-500/30 shrink-0">
+                            {peer.name.charAt(0)}
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-lg text-white group-hover:text-indigo-300 transition-colors">{peer.name}</h3>
+                            <p className="text-sm text-gray-400 font-medium">{peer.role} • {peer.department?.name || 'General'}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex-1 min-w-[200px] bg-black/30 border border-white/5 rounded-xl p-3">
+                          <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1 block">Current Task</span>
+                          {peer.tasks && peer.tasks.length > 0 ? (
+                             <p className="text-sm text-gray-200 truncate">{peer.tasks[0].title}</p>
+                          ) : (
+                             <p className="text-sm text-gray-500 italic">Idle - No active tasks.</p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                           <button 
+                             onClick={() => router.push(`/dashboard/workforce/employees/${peer.id}`)}
+                             className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl text-sm transition-all"
+                           >
+                             View Profile
+                           </button>
+                           <button 
+                             onClick={() => {
+                               // Start call with coworker instead
+                               endCall(); // End current if any
+                               setTimeout(() => {
+                                 startCall(peer.id, peer.name, peer.role);
+                               }, 300);
+                             }}
+                             className="w-10 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center transition-all shadow-lg"
+                           >
+                             <Mic className="w-4 h-4" />
+                           </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bg-white/5 border border-white/10 rounded-3xl p-12 backdrop-blur-md flex flex-col items-center justify-center text-center">
+                    <Users className="w-16 h-16 text-gray-600 mb-4" />
+                    <p className="text-gray-300 text-lg mb-2">No coworkers found.</p>
+                    <p className="text-gray-500 max-w-md">This agent is currently the only one assigned to the {employee.department?.name} department.</p>
+                  </div>
+                )}
               </div>
             )}
 

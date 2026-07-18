@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { EventService } from '@/lib/services/EventService';
 
 export async function POST(req: Request) {
   try {
@@ -137,26 +138,31 @@ export async function POST(req: Request) {
           });
           
           // Timeline Event
-          await prisma.businessTimelineEvent.create({
-            data: {
-              businessId: business.id,
-              type: 'EMPLOYEE_EVENT',
-              title: 'New Agent Hired',
-              description: `Agent ${event.payload.employeeId} was onboarded into the workforce.`
-            }
+          await EventService.publish({
+            businessId: business.id,
+            eventType: 'EMPLOYEE_HIRED',
+            module: 'WORKFORCE',
+            title: 'New Agent Hired',
+            description: `Agent ${event.payload.employeeId} was onboarded into the workforce.`,
+            actor: 'System',
+            targetEntity: 'Employee',
+            relatedEmployeeId: event.payload.employeeId,
+            severity: 'SUCCESS'
           });
         }
         break;
 
       case 'MEETING_COMPLETED':
         // Ripple: Timeline event
-        await prisma.businessTimelineEvent.create({
-          data: {
-            businessId: business.id,
-            type: 'KNOWLEDGE_EVENT',
-            title: 'Boardroom Meeting Concluded',
-            description: event.payload.content || 'A strategic meeting was concluded and decisions were logged.'
-          }
+        await EventService.publish({
+          businessId: business.id,
+          eventType: 'BOARDROOM_MEETING_COMPLETED',
+          module: 'BOARDROOM',
+          title: 'Boardroom Meeting Concluded',
+          description: event.payload.content || 'A strategic meeting was concluded and decisions were logged.',
+          actor: 'System',
+          targetEntity: 'Meeting',
+          severity: 'INFO'
         });
         break;
         

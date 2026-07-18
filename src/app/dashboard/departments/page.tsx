@@ -108,13 +108,25 @@ export default function DepartmentsPage() {
                   )}
                 </div>
 
-                <div className="mt-auto flex gap-4 pt-6 border-t border-gray-100">
+                <div className="flex gap-4 pt-4 border-t border-gray-100 mb-4">
+                  <div className="flex-1 text-center">
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">Active Tasks</p>
+                    <p className="text-xl font-bold text-gray-900">{dept.activeTaskCount || 0}</p>
+                  </div>
+                  <div className="w-px bg-gray-100"></div>
+                  <div className="flex-1 text-center">
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">Completed</p>
+                    <p className="text-xl font-bold text-gray-900">{dept.completedTaskCount || 0}</p>
+                  </div>
+                </div>
+
+                <div className="mt-auto flex gap-4 pt-4">
                   <Link href={`/dashboard/workforce/marketplace?department=${encodeURIComponent(dept.name)}`} className="flex-1 py-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-bold rounded-xl transition-colors text-center border border-indigo-100 shadow-sm">
                     Hire Talent
                   </Link>
-                  <button className="flex-1 py-3 bg-white hover:bg-gray-50 text-gray-700 text-sm font-bold rounded-xl transition-colors border border-gray-200 shadow-sm">
+                  <Link href={`/dashboard/departments/${dept.id}`} className="flex-1 py-3 bg-white hover:bg-gray-50 text-gray-700 text-sm font-bold rounded-xl transition-colors text-center border border-gray-200 shadow-sm inline-block">
                     View Analytics
-                  </button>
+                  </Link>
                 </div>
               </motion.div>
             ))

@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { DepartmentService } from '@/lib/services/DepartmentService';
 
 export async function GET() {
   try {
@@ -10,15 +11,7 @@ export async function GET() {
     const business = await prisma.business.findUnique({ where: { id: businessId } });
     if (!business) return NextResponse.json({ error: 'No business configured' }, { status: 404 });
 
-    const departments = await prisma.department.findMany({
-      where: { businessId: business.id },
-      include: {
-        employees: {
-          select: { id: true, name: true, role: true }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    const departments = await DepartmentService.getDepartmentsOverview(business.id);
 
     return NextResponse.json({ success: true, data: departments });
   } catch (error: any) {

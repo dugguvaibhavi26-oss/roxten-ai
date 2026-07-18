@@ -1,108 +1,126 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
-import { collection, addDoc } from 'firebase/firestore';
-import { GroqProvider } from '@/core/providers/GroqProvider';
+import { IntelligenceService } from '@/lib/services/IntelligenceService';
 
 export async function POST(req: Request) {
   try {
-    const { businessId, text, sourceUrl, sourceTitle } = await req.json();
+    const formData = await req.formData();
+    const file = formData.get('file') as File;
+    const businessId = formData.get('businessId') as string;
+    const uploaderId = (formData.get('uploaderId') as string) || 'System';
+    const sourceTitle = (formData.get('sourceTitle') as string) || file?.name || 'Uploaded Document';
 
-    if (!businessId || !text) {
-      return NextResponse.json({ error: 'Missing businessId or text content' }, { status: 400 });
+    if (!businessId || !file) {
+      return NextResponse.json({ 
+        success: false, 
+        stage: 'validation', 
+        error: 'Missing file or businessId',
+        details: `businessId: ${!!businessId}, file: ${!!file}`
+      }, { status: 400 });
     }
 
-    const llm = new GroqProvider();
-    const systemPrompt = `You are a visionary AI Operating System. A new document was just uploaded to the company's knowledge base.
-Document Source: ${sourceTitle || sourceUrl}
-Document Content:
-${text.substring(0, 15000)}
+    const { EventService } = await import('@/lib/services/EventService');
+    const { default: prisma } = await import('@/lib/prisma');
 
-Analyze this new information and generate structured knowledge updates.`;
-
-    const jsonSchema = {
-      type: "object",
-      properties: {
-        knowledgeUpdates: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              category: { type: "string" },
-              title: { type: "string" },
-              content: { type: "string" },
-              tags: { type: "array", items: { type: "string" } },
-              confidenceScore: { type: "number" },
-              relatedDepartments: { type: "array", items: { type: "string" } }
-            }
-          }
-        },
-        brainUpdates: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              category: { type: "string" },
-              title: { type: "string" },
-              content: { type: "string" }
-            }
-          }
-        }
-      }
-    };
-
-    let parsedData: any;
+    // 1. Create the raw document record
+    let docMeta;
     try {
-      parsedData = await llm.generateJSON(systemPrompt, jsonSchema);
+      docMeta = await prisma.knowledgeDocument.create({
+        data: {
+          businessId,
+          title: sourceTitle,
+          sourceUrl: '', // Will update after upload
+          status: 'UPLOADING',
+          type: 'DOCUMENT',
+          fileSize: file.size || 0,
+          fileType: file.type || 'application/octet-stream',
+          uploaderId
+        }
+      });
     } catch (e: any) {
-      throw new Error(`LLM Error: ${e.message}`);
+      return NextResponse.json({ success: false, stage: 'database', error: 'Failed to create document record', details: e.message }, { status: 500 });
     }
 
-    // 1. Insert Knowledge Graph updates
-    if (parsedData.knowledgeUpdates) {
-      const kgPromises = parsedData.knowledgeUpdates.map((kg: any) => 
-        addDoc(collection(db, 'knowledgeBase'), {
-          businessId,
-          title: kg.title,
-          category: kg.category,
-          content: kg.content,
-          tags: kg.tags || [],
-          confidenceScore: kg.confidenceScore || 90,
-          sourceReference: sourceTitle || sourceUrl || 'Continuous Ingestion',
-          relatedDepartments: kg.relatedDepartments || [],
-          createdAt: new Date().toISOString()
-        })
-      );
-      await Promise.all(kgPromises);
+    // 2. Upload to Storage
+    let url = '';
+    let extractedText = '';
+    try {
+      const uploadPath = `companies/${businessId}/knowledge/${docMeta.id}_${file.name}`;
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      // Use Firebase Storage REST API directly to bypass both CORS and SDK issues
+      const bucket = 'roxten-os.firebasestorage.app';
+      const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?name=${encodeURIComponent(uploadPath)}`;
+      
+      const res = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: buffer
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Upload failed: ${res.statusText} - ${errorText}`);
+      }
+
+      const data = await res.json();
+      const downloadTokens = data.downloadTokens;
+      url = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(uploadPath)}?alt=media&token=${downloadTokens}`;
+
+      // 3. Extract text
+      if (file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf') {
+        if (typeof global.DOMMatrix === 'undefined') {
+          (global as any).DOMMatrix = class DOMMatrix {
+            constructor() { return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }; }
+          };
+        }
+        const { PDFParse } = require('pdf-parse');
+        const parser = new PDFParse(new Uint8Array(buffer));
+        const pdfData = await parser.getText();
+        extractedText = pdfData.text;
+      } else {
+        extractedText = buffer.toString('utf-8');
+      }
+      
+      if (!extractedText.trim()) {
+         throw new Error('Extracted text is empty');
+      }
+
+    } catch (e: any) {
+      // We log it but proceed to return structured error
+      return NextResponse.json({ success: false, stage: 'extraction', error: 'Failed to upload or extract text', details: e.message }, { status: 500 });
     }
 
-    // 2. Insert Brain Updates
-    if (parsedData.brainUpdates) {
-      const brainPromises = parsedData.brainUpdates.map((brain: any) => 
-        addDoc(collection(db, 'companyBrain'), {
-          businessId,
-          category: brain.category,
-          content: brain.title,
-          actionable: brain.content,
-          impact: "Medium",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        })
-      );
-      await Promise.all(brainPromises);
+    // 4. Update Document and Timeline
+    try {
+      await prisma.knowledgeDocument.update({
+        where: { id: docMeta.id },
+        data: { sourceUrl: url }
+      });
+      await EventService.publish({
+        businessId,
+        module: 'KNOWLEDGE',
+        eventType: 'DOCUMENT_UPLOADED',
+        title: 'Document Uploaded',
+        description: `Document uploaded: ${docMeta.title}`,
+        actor: uploaderId,
+        metadata: { documentId: docMeta.id }
+      });
+    } catch (e: any) {
+       return NextResponse.json({ success: false, stage: 'timeline', error: 'Failed to update timeline or database', details: e.message }, { status: 500 });
     }
 
-    // 3. Update the Persistent Intelligence Report
-    await addDoc(collection(db, 'reports'), {
-      businessId,
-      title: "Knowledge Ingestion Report",
-      type: "update",
-      content: `The system ingested ${sourceTitle} and extracted ${parsedData.knowledgeUpdates?.length || 0} new facts and ${parsedData.brainUpdates?.length || 0} insights.`,
-      createdAt: new Date().toISOString()
-    });
+    // 5. Generate AI Summary (Company Brain)
+    let result;
+    try {
+      result = await IntelligenceService.ingestKnowledge(businessId, docMeta.id, extractedText);
+    } catch (e: any) {
+      return NextResponse.json({ success: false, stage: 'ai_summary', error: 'Failed to generate AI summary', details: e.message }, { status: 500 });
+    }
 
-    return NextResponse.json({ success: true, ingestedItems: parsedData.knowledgeUpdates?.length || 0 });
+    return NextResponse.json({ success: true, ingestedItems: result.ingestedItems, documentId: docMeta.id, url });
   } catch (error: any) {
     console.error('Knowledge Ingest Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, stage: 'unknown', error: 'An unknown error occurred', details: error.message }, { status: 500 });
   }
 }

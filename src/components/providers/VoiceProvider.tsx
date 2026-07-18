@@ -48,6 +48,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [activeEmployeeId, setActiveEmployeeId] = useState<string | null>(null);
   const [activeEmployeeName, setActiveEmployeeName] = useState<string | null>(null);
   const [activeEmployeeRole, setActiveEmployeeRole] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [lastResponse, setLastResponse] = useState<string>('');
   const [history, setHistory] = useState<{role: string, content: string}[]>([]);
 
@@ -58,6 +59,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const voiceStateRef = useRef<VoiceState>('idle');
   const isMutedRef = useRef(false);
   const activeEmployeeIdRef = useRef<string | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
   const historyRef = useRef<{role: string, content: string}[]>([]);
   const chatEndpointRef = useRef<string | null>(null);
 
@@ -65,9 +67,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     voiceStateRef.current = voiceState;
     isMutedRef.current = isMuted;
     activeEmployeeIdRef.current = activeEmployeeId;
+    sessionIdRef.current = sessionId;
     historyRef.current = history;
     chatEndpointRef.current = chatEndpoint;
-  }, [voiceState, isMuted, activeEmployeeId, history, chatEndpoint]);
+  }, [voiceState, isMuted, activeEmployeeId, sessionId, history, chatEndpoint]);
 
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -249,42 +252,68 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setHistory(prev => [...prev, { role: 'user', content: text }]);
 
     try {
-      const endpoint = chatEndpointRef.current || `/api/os/workforce/employee/${currentActiveEmployeeId}/chat`;
-      // For the onboarding chat, the payload expects 'messages', whereas the workforce chat expects 'message' and 'history'.
-      // We will send both so the endpoint can pick what it needs.
-      const payload = {
-         message: text,
-         history: historyRef.current,
-         messages: [...historyRef.current, { role: 'user', content: text }]
-      };
-      
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const responseText = data.text || data.reply || '';
+      if (chatEndpointRef.current) {
+        // Legacy flow (Onboarding etc.)
+        const endpoint = chatEndpointRef.current;
+        const payload = {
+           message: text,
+           history: historyRef.current,
+           messages: [...historyRef.current, { role: 'user', content: text }]
+        };
         
-        setLastResponse(responseText);
-        setHistory(prev => [...prev, { role: 'assistant', content: responseText }]);
-        setTranscript('');
-        setInterimTranscript('');
-        
-        if (data.handoverEmployee) {
-          setHandoverQueue(data.handoverEmployee);
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const responseText = data.text || data.reply || '';
+          
+          setLastResponse(responseText);
+          setHistory(prev => [...prev, { role: 'assistant', content: responseText }]);
+          setTranscript('');
+          setInterimTranscript('');
+          
+          if (data.handoverEmployee) {
+            setHandoverQueue(data.handoverEmployee);
+          }
+
+          if (data.isReady) {
+             const event = new CustomEvent('roxten_onboarding_ready');
+             window.dispatchEvent(event);
+          }
+          
+          speakText(responseText);
+        } else {
+          setVoiceState('listening');
+        }
+      } else {
+        // New VoiceStudioService flow
+        const sId = sessionIdRef.current;
+        if (!sId) {
+           setVoiceState('listening');
+           return;
         }
 
-        // Custom event trigger for onboarding flow completion
-        if (data.isReady) {
-           const event = new CustomEvent('roxten_onboarding_ready');
-           window.dispatchEvent(event);
+        const res = await fetch('/api/os/voice/session/turn', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: sId, text })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const responseText = data.text || '';
+          
+          setLastResponse(responseText);
+          setHistory(prev => [...prev, { role: 'assistant', content: responseText }]);
+          setTranscript('');
+          setInterimTranscript('');
+          
+          speakText(responseText);
+        } else {
+          setVoiceState('listening');
         }
-        
-        speakText(responseText);
-      } else {
-        setVoiceState('listening');
       }
     } catch (e) {
       console.error(e);
@@ -419,30 +448,69 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       })
       .catch(() => {});
 
-    if (skipGreeting) {
-       setVoiceState('thinking');
-       return;
-    }
-
     setTimeout(async () => {
       setVoiceState('thinking');
       try {
-        const endpoint = customEndpoint || `/api/os/workforce/employee/${employeeId}/chat`;
-        const greetingMsg = '[CEO has joined the call. Greet them naturally in 1 short sentence.]';
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: greetingMsg, history: [], messages: [{ role: 'user', content: greetingMsg }] })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const responseText = data.text || data.reply || '';
-          setLastResponse(responseText);
-          setHistory([{ role: 'assistant', content: responseText }]);
-          speakText(responseText);
+        if (customEndpoint) {
+          if (skipGreeting) {
+             setVoiceState('listening');
+             startListening();
+             return;
+          }
+          const greetingMsg = '[CEO has joined the call. Greet them naturally in 1 short sentence.]';
+          const res = await fetch(customEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: greetingMsg, history: [], messages: [{ role: 'user', content: greetingMsg }] })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const responseText = data.text || data.reply || '';
+            setLastResponse(responseText);
+            setHistory([{ role: 'assistant', content: responseText }]);
+            speakText(responseText);
+          } else {
+            setVoiceState('listening');
+            startListening();
+          }
         } else {
-          setVoiceState('listening');
-          startListening();
+          // Initialize Voice Session Backend
+          const res = await fetch('/api/os/voice/session/start', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ employeeId })
+          });
+          if (res.ok) {
+             const sessionData = await res.json();
+             setSessionId(sessionData.id);
+             
+             if (skipGreeting) {
+                setVoiceState('listening');
+                startListening();
+                return;
+             }
+
+             // Trigger initial greeting through backend
+             const turnRes = await fetch('/api/os/voice/session/turn', {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json' },
+               body: JSON.stringify({ sessionId: sessionData.id, text: '[CEO has joined the call. Greet them naturally in 1 short sentence.]' })
+             });
+             
+             if (turnRes.ok) {
+                const turnData = await turnRes.json();
+                const responseText = turnData.text || '';
+                setLastResponse(responseText);
+                setHistory([{ role: 'assistant', content: responseText }]);
+                speakText(responseText);
+             } else {
+                setVoiceState('listening');
+                startListening();
+             }
+          } else {
+             setVoiceState('listening');
+             startListening();
+          }
         }
       } catch (e) {
         setVoiceState('listening');
@@ -452,10 +520,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const endCall = () => {
+    if (sessionIdRef.current && !chatEndpointRef.current) {
+        fetch('/api/os/voice/session/end', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ sessionId: sessionIdRef.current })
+        }).catch(() => {});
+    }
     setVoiceState('idle');
     setActiveEmployeeId(null);
     setActiveEmployeeName(null);
     setActiveEmployeeRole(null);
+    setSessionId(null);
     setHistory([]);
     if (activeAudioRef.current) {
         activeAudioRef.current.pause();

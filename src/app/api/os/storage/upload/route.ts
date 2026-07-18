@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
-import { storage } from '@/lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+// @deprecated Use /api/os/knowledge/ingest instead. This route will be removed in Phase 2.
+// Existing usage in /onboarding/existing-business/page.tsx needs to be migrated.
 
 export async function POST(req: Request) {
   try {

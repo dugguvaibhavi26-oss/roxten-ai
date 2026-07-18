@@ -1,7 +1,6 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { EventPipeline } from '@/core/messaging/EventPipeline';
+import { BoardroomService } from '@/lib/services/BoardroomService';
 
 export async function POST(req: Request) {
   try {
@@ -14,39 +13,8 @@ export async function POST(req: Request) {
     const cookieStore = await cookies();
     const businessId = cookieStore.get('businessId')?.value;
     if (!businessId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const business = await prisma.business.findUnique({ where: { id: businessId } });
-    if (!business) {
-      return NextResponse.json({ error: 'Business not found' }, { status: 404 });
-    }
 
-    const meeting = await prisma.meeting.create({
-      data: {
-        businessId: business.id,
-        topic,
-        status: 'IN_PROGRESS'
-      }
-    });
-
-    // Log to activity
-    const activity = await prisma.activity.create({
-      data: {
-        id: `act_${Date.now()}`,
-        businessId: business.id,
-        employeeId: participantIds[0], // Attribute to the first participant for now
-        source: 'boardroom',
-        updatedAt: new Date(),
-      }
-    });
-
-    await prisma.activityEvent.create({
-      data: {
-        id: `evt_${Date.now()}`,
-        activityId: activity.id,
-        eventType: 'MEETING_STARTED',
-        actor: 'CEO',
-        content: `Boardroom meeting started: ${topic}`,
-      }
-    });
+    const meeting = await BoardroomService.startMeeting(businessId, topic, participantIds, 'CEO');
 
     return NextResponse.json(meeting);
   } catch (error: any) {
@@ -54,3 +22,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+

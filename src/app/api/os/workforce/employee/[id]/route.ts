@@ -53,6 +53,24 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
        return employee.knowledgeAccessTags.some(tag => kTags.includes(tag)) || k.department === employee.department?.name;
     });
 
+    // Fetch coworkers
+    let coworkers: any[] = [];
+    if (employee.departmentId) {
+      const peers = await prisma.employee.findMany({
+        where: { businessId: employee.businessId, departmentId: employee.departmentId, id: { not: employee.id }, isDeployed: true },
+        include: { department: true }
+      });
+      
+      const activeTasks = await prisma.task.findMany({
+        where: { businessId: employee.businessId, status: { in: ['PENDING', 'IN_PROGRESS'] } }
+      });
+
+      coworkers = peers.map((p: any) => ({
+        ...p,
+        tasks: activeTasks.filter((t: any) => t.employeeId === p.id)
+      }));
+    }
+
     // We add the memories directly to the employee object to preserve UI compat
     const employeeWithMemories = {
       ...employee,
@@ -66,7 +84,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({
       employee: employeeWithMemories,
       activities,
-      knowledge
+      knowledge,
+      coworkers
     });
   } catch (error: any) {
     console.error('Error fetching employee:', error);

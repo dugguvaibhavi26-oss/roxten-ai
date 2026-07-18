@@ -14,69 +14,73 @@ export async function POST(req: Request) {
     const business = await prisma.business.findUnique({ where: { id: businessId } });
     if (!business) return NextResponse.json({ error: 'Business not found' }, { status: 404 });
 
-    // Pre-fetch activity IDs for the business to bypass mock relational limitations
-    const businessActivities = await prisma.activity.findMany({ where: { businessId: business.id } });
-    const activityIds = businessActivities.map((a: any) => a.id).slice(0, 10);
-    
-    // Fetch comprehensive context
-    const [memories, knowledge, activities, meetings, tasks, insights, timelineEvents, employees] = await Promise.all([
-      prisma.memory.findMany({ where: { businessId: business.id }, take: 100 }),
-      prisma.businessKnowledge.findMany({ where: { businessId: business.id } }),
-      activityIds.length > 0 ? prisma.activityEvent.findMany({ where: { activityId: { in: activityIds } }, take: 50, orderBy: { createdAt: 'desc' } }) : Promise.resolve([]),
-      prisma.meeting.findMany({ where: { businessId: business.id }, take: 20, orderBy: { createdAt: 'desc' } }),
-      prisma.task.findMany({ where: { businessId: business.id }, take: 50, include: { employee: true }, orderBy: { createdAt: 'desc' } }),
-      prisma.businessInsight.findMany({ where: { businessId: business.id }, take: 30, orderBy: { createdAt: 'desc' } }),
-      prisma.businessTimelineEvent.findMany({ where: { businessId: business.id }, take: 30, orderBy: { createdAt: 'desc' } }),
-      prisma.employee.findMany({ where: { businessId: business.id }, include: { department: true } })
+    // Intelligent Search: Retrieve prioritized knowledge instead of dumping everything
+    // We'll prioritize businessKnowledge (policies/sops), DNA, and recent active tasks
+    const [knowledge, dnaRec, tasks, insights] = await Promise.all([
+      prisma.businessKnowledge.findMany({ where: { businessId }, take: 40, orderBy: { createdAt: 'desc' } }),
+      prisma.memory.findFirst({ where: { businessId, key: 'COMPANY_DNA' } }),
+      prisma.task.findMany({ where: { businessId, status: { in: ['PENDING', 'IN_PROGRESS'] } }, take: 20, include: { employee: true }, orderBy: { createdAt: 'desc' } }),
+      prisma.businessInsight.findMany({ where: { businessId }, take: 10, orderBy: { createdAt: 'desc' } })
     ]);
 
+    let dnaString = 'No Company DNA defined.';
+    if (dnaRec) {
+      try {
+        const parsed = JSON.parse(dnaRec.value);
+        dnaString = `Mission: ${parsed.mission}\nCore Values: ${parsed.coreValues?.join(', ')}\nRules: ${parsed.operationalRules?.join(', ')}`;
+      } catch(e) {}
+    }
+
     const context = `
-COMPANY KNOWLEDGE BASE (KNOWLEDGE GRAPH):
+[COMPANY DNA]
+${dnaString}
 
-EMPLOYEES (THE WORKFORCE):
-${employees.map(e => `- ${e.name} (${e.role} in ${e.department?.name || 'General'}) [ID: ${e.id}]`).join('\n')}
+[KNOWLEDGE GRAPH & SOPs]
+${knowledge.map(k => `[Source: ${k.sourceReference || 'Document'}] ${k.title}: ${k.content}`).join('\n\n')}
 
-MEMORIES (LONG-TERM CONTEXT):
-${memories.map(m => `- ${m.key}: ${m.value}`).join('\n')}
+[ACTIVE TASKS]
+${tasks.map(t => `[Source: Task Center] ${t.title} (Assigned to: ${t.employee?.name})`).join('\n')}
 
-KNOWLEDGE DOCS (SOPs & POLICIES):
-${knowledge.map(k => `- ${k.title}:\n${k.content}`).join('\n\n')}
-
-MEETINGS (COLLABORATION HISTORY):
-${meetings.map(m => `- ${m.topic}: ${m.summary || 'No summary'}`).join('\n')}
-
-ACTIVE & PENDING TASKS (WORKLOAD):
-${tasks.map(t => `- ${t.title} [Status: ${t.status}] (Assigned to: ${t.employee.name}) - ${t.description || ''}`).join('\n')}
-
-BUSINESS INSIGHTS (HIGH LEVEL ANALYSIS):
-${insights.map(i => `- [${i.priority}] ${i.title}: ${i.description}`).join('\n')}
-
-TIMELINE EVENTS (KEY ACTIONS):
-${timelineEvents.map(t => `- [${t.type}] ${t.title}: ${t.description || ''}`).join('\n')}
-
-RECENT ACTIVITY (LOW LEVEL LOGS):
-${activities.map(a => `- [${a.createdAt.toISOString()}] ${a.actor}: ${a.content}`).join('\n')}
+[STRATEGIC INSIGHTS]
+${insights.map(i => `[Source: Brain Insight] ${i.title}: ${i.description}`).join('\n')}
 `;
 
     const llm = new GroqProvider();
     
-    const prompt = `
-You are the Company Brain, an omniscient AI that serves as the intelligence layer of Roxten OS.
-You possess a completely unified understanding of this organization.
-When answering, you MUST connect the dots. For example, if asked about a project, mention the Meetings that discussed it, the Tasks assigned to it, the Employees responsible, and the resulting Insights.
+    const prompt = `You are the Company Brain, an omniscient AI that serves as the intelligence layer of the organization.
+You must answer the user's query using ONLY the provided Context Graph below. Do not invent information.
 
-Use the following Context Graph to answer the user's question accurately. 
-If the answer is not in the context, state that the Company Brain does not have records of it. Do not invent information.
+If the answer is not in the context, state that you do not have records of it.
 
+CONTEXT GRAPH:
 ${context}
 
 User Question: ${query}
-Company Brain Analysis:
-`;
 
-    const responseText = await llm.generateText(prompt);
+You MUST return a valid JSON object with the following structure:
+{
+  "answer": "Your detailed answer",
+  "sources": ["List", "of", "sources", "referenced in the context"],
+  "confidence": 95
+}`;
 
-    return NextResponse.json({ answer: responseText.trim() });
+    const jsonSchema = {
+      type: "object",
+      properties: {
+        answer: { type: "string" },
+        sources: { type: "array", items: { type: "string" } },
+        confidence: { type: "number" }
+      },
+      required: ["answer", "sources"]
+    };
+
+    const responseJSON = await llm.generateJSON(prompt, jsonSchema) as any;
+
+    return NextResponse.json({
+      answer: responseJSON?.answer || 'I could not synthesize an answer.',
+      sources: responseJSON?.sources || [],
+      confidence: responseJSON?.confidence || 0
+    });
   } catch (error: any) {
     console.error('Brain Query Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

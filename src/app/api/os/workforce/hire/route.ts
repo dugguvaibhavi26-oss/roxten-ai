@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { EventPipeline } from '@/core/messaging/EventPipeline';
 import { IntelligenceService } from '@/lib/services/IntelligenceService';
+import { EventService } from '@/lib/services/EventService';
 
 export async function POST(req: Request) {
   try {
@@ -113,36 +114,19 @@ export async function POST(req: Request) {
     employee.isActive = true;
     employee.isDeployed = true;
 
-    // 5. Company Brain Registration & Activity Feed Update
-    const activity = await prisma.activity.create({
-      data: {
-        id: `act_${Date.now()}`,
-        businessId: businessId,
-        employeeId: employee.id,
-        status: 'system',
-        updatedAt: new Date()
-      }
-    });
-
-    await prisma.activityEvent.create({
-      data: {
-        id: `evt_${Date.now()}`,
-        activityId: activity.id,
-        eventType: 'AGENT_HIRED',
-        actor: 'CEO',
-        content: `Successfully deployed ${employee.name} (${employee.role}) into the ${department.name} department.`
-      }
-    });
-
-    // 6. Timeline Generation (Ripple Effect)
-    await prisma.businessTimelineEvent.create({
-      data: {
-        businessId: businessId,
-        type: 'EMPLOYEE_EVENT',
-        title: 'New AI Employee Deployed',
-        description: `${employee.name} initialized and deployed as ${employee.role} in ${department.name}.`,
-        metadata: { employeeId: employee.id, role: employee.role }
-      }
+    // 5. Timeline Generation (Ripple Effect)
+    await EventService.publish({
+      businessId: businessId,
+      eventType: 'EMPLOYEE_HIRED',
+      module: 'WORKFORCE',
+      title: 'New AI Employee Deployed',
+      description: `${employee.name} initialized and deployed as ${employee.role} in ${department.name}.`,
+      actor: 'CEO',
+      targetEntity: 'Employee',
+      relatedEmployeeId: employee.id,
+      departmentId: department.id,
+      metadata: { role: employee.role },
+      severity: 'SUCCESS'
     });
 
     // EventPipeline Broadcast

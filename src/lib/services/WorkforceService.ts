@@ -65,18 +65,21 @@ export class WorkforceService {
     };
   }
 
-  /**
-   * Returns Live Company Pulse metrics based strictly on deployed employees
-   * and live runtime tasks.
-   */
   static async getPulseMetrics(businessId: string) {
     const employees = await this.getDeployedEmployees(businessId);
-    const activeTasks = await prisma.task.findMany({
-      where: {
-        businessId,
-        status: { in: ['PENDING', 'IN_PROGRESS'] }
-      }
-    });
+    
+    // Fetch real metrics
+    const [activeTasks, completedTasks, voiceSessions] = await Promise.all([
+      prisma.task.findMany({
+        where: { businessId, status: { in: ['PENDING', 'IN_PROGRESS'] } }
+      }),
+      prisma.task.findMany({
+        where: { businessId, status: 'COMPLETED' }
+      }),
+      prisma.activity.findMany({
+        where: { businessId, source: 'voice_session' }
+      })
+    ]);
 
     const activeEmployeesCount = employees.length;
     const runningTasksCount = activeTasks.length;
@@ -87,7 +90,9 @@ export class WorkforceService {
 
     return {
       activeEmployees: activeEmployeesCount,
-      tasksCount: runningTasksCount,
+      tasksCount: runningTasksCount, // Assigned Tasks
+      completedTasks: completedTasks.length, // Completed Tasks
+      voiceSessions: voiceSessions.length, // Total Voice Sessions
       workingEmployees,
       idleEmployees,
       averageRuntimeHealth: 100, // Placeholder for runtime health checks

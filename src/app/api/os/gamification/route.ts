@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { EventService } from '@/lib/services/EventService';
 
 export async function PATCH(req: Request) {
   try {
@@ -56,14 +57,16 @@ export async function PATCH(req: Request) {
         });
 
         // Log Timeline Event for Promotion/Autonomy Change
-        await prisma.businessTimelineEvent.create({
-          data: {
-            businessId,
-            type: 'EMPLOYEE_EVENT',
-            title: `Employee Promoted: ${employee.name}`,
-            description: `${employee.name}'s autonomy level was upgraded to ${autonomyLevel}.`,
-            createdAt: new Date()
-          }
+        await EventService.publish({
+          businessId,
+          eventType: 'GAMIFICATION_PROMOTION',
+          module: 'GAMIFICATION',
+          title: `Employee Promoted: ${employee.name}`,
+          description: `${employee.name}'s autonomy level was upgraded to ${autonomyLevel}.`,
+          actor: 'System',
+          targetEntity: 'Employee',
+          relatedEmployeeId: employee.id,
+          severity: 'SUCCESS'
         });
 
         // Log Activity Event for the employee's active desk

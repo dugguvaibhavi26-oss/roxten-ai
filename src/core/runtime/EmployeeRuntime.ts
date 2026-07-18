@@ -1,6 +1,7 @@
 import { LLMProvider, VoiceProvider, SpeechProvider } from '../providers/interfaces';
 import { EventPipeline } from '../messaging/EventPipeline';
 import prisma from '@/lib/prisma';
+import { EventService } from '@/lib/services/EventService';
 
 export interface EmployeeConfig {
   id: string;
@@ -208,15 +209,17 @@ Do NOT include markdown formatting or backticks. Return RAW JSON.
         await this.storeMemory(parsed.memoryUpdate.key, parsed.memoryUpdate.value);
         
         // Log to Activity Event so Mission Control sees it
-        await prisma.businessTimelineEvent.create({
-          data: {
-            businessId: this.config.businessId, 
-            type: 'KNOWLEDGE_EVENT',
-            title: `${this.config.name} Learned Something`,
-            description: `Learned: ${parsed.memoryUpdate.key} - ${parsed.memoryUpdate.value}`,
-            createdAt: new Date()
-          }
-        }).catch(() => {});
+        await EventService.publish({
+          businessId: this.config.businessId,
+          eventType: 'KNOWLEDGE_EXTRACTED',
+          module: 'WORKFORCE',
+          title: `${this.config.name} Learned Something`,
+          description: `Learned: ${parsed.memoryUpdate.key} - ${parsed.memoryUpdate.value}`,
+          actor: this.config.name,
+          targetEntity: 'Memory',
+          relatedEmployeeId: this.config.id,
+          severity: 'INFO'
+        });
       }
 
       // Initiative: Create self-assigned tasks
@@ -235,15 +238,17 @@ Do NOT include markdown formatting or backticks. Return RAW JSON.
                 updatedAt: new Date()
               }
             });
-            await prisma.businessTimelineEvent.create({
-              data: {
-                businessId: this.config.businessId,
-                type: 'TASK_EVENT',
-                title: `${this.config.name} Self-Assigned Task`,
-                description: `Taking initiative on task: ${task.title}`,
-                createdAt: new Date()
-              }
-            }).catch(() => {});
+            await EventService.publish({
+              businessId: this.config.businessId,
+              eventType: 'TASK_CREATED',
+              module: 'WORKFORCE',
+              title: `${this.config.name} Self-Assigned Task`,
+              description: `Taking initiative on task: ${task.title}`,
+              actor: this.config.name,
+              targetEntity: 'Task',
+              relatedEmployeeId: this.config.id,
+              severity: 'INFO'
+            });
           }
         }
       }
@@ -274,15 +279,18 @@ Do NOT include markdown formatting or backticks. Return RAW JSON.
                       updatedAt: new Date()
                     }
                   });
-                  await prisma.businessTimelineEvent.create({
-                    data: {
-                      businessId: this.config.businessId,
-                      type: 'TASK_EVENT',
-                      title: `${this.config.name} Delegated a Task`,
-                      description: `Assigned '${delegation.title}' to ${targetEmployee.name} (${targetDept.name})`,
-                      createdAt: new Date()
-                    }
-                  }).catch(() => {});
+                  await EventService.publish({
+                    businessId: this.config.businessId,
+                    eventType: 'TASK_CREATED',
+                    module: 'WORKFORCE',
+                    title: `${this.config.name} Delegated a Task`,
+                    description: `Assigned '${delegation.title}' to ${targetEmployee.name} (${targetDept.name})`,
+                    actor: this.config.name,
+                    targetEntity: 'Task',
+                    relatedEmployeeId: targetEmployee.id,
+                    departmentId: targetDept.id,
+                    severity: 'INFO'
+                  });
                 }
              }
           }

@@ -11,7 +11,7 @@ export default function BrainDashboard() {
   
   const [queryInput, setQueryInput] = useState('');
   const [queryActive, setQueryActive] = useState(false);
-  const [queryHistory, setQueryHistory] = useState<{user: string, ai: string}[]>([]);
+  const [queryHistory, setQueryHistory] = useState<{user: string, ai: string, sources?: string[], confidence?: number}[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -51,6 +51,8 @@ export default function BrainDashboard() {
       setQueryHistory(prev => {
         const newH = [...prev];
         newH[newH.length - 1].ai = result.answer || 'I could not find an answer.';
+        newH[newH.length - 1].sources = result.sources;
+        newH[newH.length - 1].confidence = result.confidence;
         return newH;
       });
     } catch (e) {
@@ -80,6 +82,7 @@ export default function BrainDashboard() {
   const meetings = data?.meetings || [];
   const insights = data?.insights || [];
   const timelineEvents = data?.timelineEvents || [];
+  const dna = data?.dna;
 
   return (
     <div className="h-full w-full bg-[#FAFAFA] text-gray-900 overflow-hidden flex flex-col relative">
@@ -145,8 +148,26 @@ export default function BrainDashboard() {
                   <div className="bg-gray-100 border border-gray-200 rounded-2xl rounded-tr-none p-3.5 text-sm ml-8 text-right text-gray-700 shadow-sm">
                     {q.user}
                   </div>
-                  <div className="bg-indigo-50 border border-indigo-100 rounded-2xl rounded-tl-none p-4 text-sm mr-8 text-indigo-900 whitespace-pre-wrap shadow-sm">
-                    {q.ai}
+                  <div className="bg-indigo-50 border border-indigo-100 rounded-2xl rounded-tl-none p-4 text-sm mr-8 text-indigo-900 whitespace-pre-wrap shadow-sm flex flex-col gap-3">
+                    <div>{q.ai}</div>
+                    {(q.sources?.length ?? 0) > 0 && (
+                      <div className="pt-2 border-t border-indigo-100/50">
+                        <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider mb-1">Sources</div>
+                        <ul className="text-xs text-indigo-700/80 space-y-1">
+                          {q.sources?.map((s, idx) => (
+                            <li key={idx} className="flex items-start gap-1.5">
+                              <span className="text-indigo-400 mt-0.5">•</span>
+                              {s}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {q.confidence !== undefined && (
+                      <div className="text-[10px] font-bold text-indigo-400/80 uppercase tracking-widest text-right mt-1">
+                        Confidence: {q.confidence}%
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -179,6 +200,56 @@ export default function BrainDashboard() {
           
           <div className="shrink-0">
             <KnowledgeUploader onComplete={() => window.location.reload()} />
+          </div>
+
+          {/* Company DNA Widget */}
+          <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-3xl p-6 text-white shadow-lg relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
+            <div className="relative z-10">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold flex items-center gap-2 text-indigo-100">
+                  <Brain className="w-5 h-5 text-indigo-400" /> Company DNA
+                </h3>
+                {dna && <div className="text-[10px] px-2 py-1 bg-indigo-500/20 text-indigo-200 rounded-md uppercase font-bold tracking-widest border border-indigo-500/30">Verified</div>}
+              </div>
+
+              {!dna ? (
+                <div className="text-sm text-indigo-200/70 italic flex items-center gap-2">
+                  <Activity className="w-4 h-4 animate-pulse" /> DNA is currently synthesizing from knowledge...
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-[10px] uppercase font-bold tracking-widest text-indigo-400 mb-1">Core Mission</div>
+                    <div className="text-sm font-medium text-white/90 leading-relaxed">{dna.mission}</div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <div className="text-[10px] uppercase font-bold tracking-widest text-indigo-400 mb-2">Primary Objectives</div>
+                      <ul className="space-y-1">
+                        {dna.primaryObjectives?.slice(0, 3).map((obj: string, i: number) => (
+                          <li key={i} className="text-xs text-white/80 flex items-start gap-1.5">
+                            <span className="text-indigo-400 mt-0.5 opacity-50">▹</span>
+                            <span className="leading-tight">{obj}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase font-bold tracking-widest text-indigo-400 mb-2">Core Values</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {dna.coreValues?.slice(0, 4).map((val: string, i: number) => (
+                          <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-white/80 border border-white/5 font-medium whitespace-nowrap">
+                            {val}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-6 shrink-0 h-[500px]">

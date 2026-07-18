@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Users, UserPlus, Target, Award, BrainCircuit, Activity, ChevronRight, BarChart } from 'lucide-react';
+import { Users, UserPlus, Target, Award, BrainCircuit, Activity, ChevronRight, BarChart, Mic } from 'lucide-react';
 import Link from 'next/link';
 
 export default function WorkforceHub() {
@@ -61,19 +61,25 @@ export default function WorkforceHub() {
             <div className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
               <Activity className="w-4 h-4 text-emerald-600" /> Active Agents
             </div>
-            <div className="text-4xl font-bold text-gray-900">{totalEmployees.length}</div>
+            <div className="text-4xl font-bold text-gray-900">{data?.pulseMetrics?.activeEmployees || totalEmployees.length || 0}</div>
           </div>
           <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 shadow-sm">
             <div className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
-              <Target className="w-4 h-4 text-blue-600" /> Success Rate
+              <Target className="w-4 h-4 text-blue-600" /> Assigned Tasks
             </div>
-            <div className="text-4xl font-bold text-gray-900">98.4%</div>
+            <div className="text-4xl font-bold text-gray-900">{data?.pulseMetrics?.tasksCount || 0}</div>
           </div>
           <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 shadow-sm">
             <div className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
-              <Award className="w-4 h-4 text-purple-600" /> Total Missions
+              <Award className="w-4 h-4 text-purple-600" /> Completed Tasks
             </div>
-            <div className="text-4xl font-bold text-gray-900">1,204</div>
+            <div className="text-4xl font-bold text-gray-900">{data?.pulseMetrics?.completedTasks || 0}</div>
+          </div>
+          <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <div className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+              <Mic className="w-4 h-4 text-indigo-600" /> Voice Sessions
+            </div>
+            <div className="text-4xl font-bold text-gray-900">{data?.pulseMetrics?.voiceSessions || 0}</div>
           </div>
         </div>
       </div>

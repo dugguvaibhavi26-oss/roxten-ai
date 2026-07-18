@@ -31,7 +31,7 @@ export async function GET() {
     
     // We can also fetch some relational tasks/timeline if we want, but for now we'll 
     // just pull a quick summary of tasks to not break the UI metrics
-    const [tasks, timelineEvents] = await Promise.all([
+    const [tasks, timelineEvents, dna] = await Promise.all([
       prisma.task.findMany({
         where: { businessId: business.id },
         orderBy: { createdAt: 'desc' },
@@ -42,7 +42,8 @@ export async function GET() {
         where: { businessId: business.id },
         orderBy: { createdAt: 'desc' },
         take: 100
-      })
+      }),
+      IntelligenceService.getCompanyDNA(business.id)
     ]);
 
     return NextResponse.json({
@@ -55,6 +56,7 @@ export async function GET() {
         timelineEvents: timelineEvents.length
       },
       business,
+      dna,
       memories: firebaseBrain, // Sending brain as memories for UI compat
       knowledge: knowledgeBase, // The brain page uses this
       meetings: firebaseReports.filter(r => r.type === 'meeting' || r.title.includes('Meeting')),
